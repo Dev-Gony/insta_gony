@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+runtime/
+node_modules/
+video/out/
+.claude/settings.local.json
