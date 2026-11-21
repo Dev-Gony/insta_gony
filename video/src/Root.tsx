@@ -4,6 +4,7 @@ import { cardsSchema } from "./cards/schema";
 import { FoodCards, calculateFoodCardsMetadata } from "./food/FoodCards";
 import { foodCardsSchema } from "./food/schema";
 import { FoodReel, calculateFoodReelMetadata, foodReelSchema } from "./food/FoodReel";
+import { FoodReelEdit, calculateFoodReelEditMetadata, foodReelEditSchema } from "./food/FoodReelEdit";
 
 // 실제 렌더링은 cards.py가 --props로 내용을 넘겨준다. defaultProps는 Studio 미리보기용 샘플.
 export const RemotionRoot: React.FC = () => {
@@ -88,6 +89,26 @@ export const RemotionRoot: React.FC = () => {
           height: 720,
           title: "오픈런 첫 족발\n명동 미쓰족발",
           footer: "전체 후기는 프로필 링크 블로그에",
+          handle: "@yamyam_gony",
+        }}
+      />
+      {/* 얌얌고니 릴스 편집본: 1.5~2초 컷 + 자막 + 줌 + 마지막 CTA. 실제 내용은 --props로 넘긴다. */}
+      <Composition
+        id="FoodReelEdit"
+        component={FoodReelEdit}
+        schema={foodReelEditSchema}
+        calculateMetadata={calculateFoodReelEditMetadata}
+        durationInFrames={300}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={{
+          video: "videos/224485765186/01.mp4",
+          width: 720,
+          height: 720,
+          segments: [{ start: 34, end: 35.6, text: "**갓 삶은** 첫 족발" }],
+          cta: { start: 28, seconds: 3, text: "**쌈**파? **소스**파?", sub: "댓글로 한 단어만" },
+          footer: "명동 미쓰족발 · 전체 후기는 블로그",
           handle: "@yamyam_gony",
         }}
       />
