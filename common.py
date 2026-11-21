@@ -115,7 +115,7 @@ def describe_oauth_token(token):
     return f"길이 {len(token)}, sk-ant-oat 접두사 {'있음' if token.startswith('sk-ant-oat') else '없음'}"
 
 
-def claude_json(system_prompt, user_prompt, schema, model=None):
+def claude_json(system_prompt, user_prompt, schema, model=None, read_dirs=None):
     """Claude Code CLI(claude -p)로 schema에 맞는 JSON을 받는다.
 
     API 키 대신 Claude 구독 계정으로 실행된다. 로컬은 로그인된 상태를 쓰고,
@@ -126,11 +126,17 @@ def claude_json(system_prompt, user_prompt, schema, model=None):
     if not claude:
         raise RuntimeError("claude CLI가 없습니다. Claude Code를 설치하세요.")
 
+    # read_dirs를 주면 그 폴더의 파일(이미지 등)을 읽는 Read 도구만 켠다. 그 밖의 도구는 끈다.
+    tools = ["--tools", "Read", "--allowedTools", "Read"] if read_dirs else ["--tools", ""]
+
+    for folder in read_dirs or []:
+        tools += ["--add-dir", os.path.abspath(folder)]
+
     command = [
         claude,
         "-p",
         "--output-format", "json",
-        "--tools", "",
+        *tools,
         "--system-prompt", system_prompt,
         "--json-schema", json.dumps(schema),
     ]

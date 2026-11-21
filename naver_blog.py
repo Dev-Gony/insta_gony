@@ -247,3 +247,58 @@ def in_categories(category_no, tree, allowed):
         category_no = tree.get(category_no, ("", ""))[1]
 
     return False
+
+
+# ---------------------------------------------------------------------------
+# 글 안의 동영상 (네이버 동영상 플레이어)
+# ---------------------------------------------------------------------------
+
+def post_videos(html):
+    """본문 동영상의 (vid, inkey) 목록 (글 순서대로)."""
+    import json
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+    videos = []
+
+    for script in soup.select("script.__se_module_data"):
+        try:
+            data = json.loads(script.get("data-module") or "{}").get("data") or {}
+        except json.JSONDecodeError:
+            continue
+
+        if data.get("vid") and data.get("inkey") and (data["vid"], data["inkey"]) not in videos:
+            videos.append((data["vid"], data["inkey"]))
+
+    return videos
+
+
+def video_source(vid, inkey):
+    """가장 큰 화질의 mp4 주소와 정보: {"url", "width", "height", "duration"}."""
+    import json
+    import urllib.request
+
+    from common import BROWSER_HEADERS
+
+    request = urllib.request.Request(
+        f"https://apis.naver.com/rmcnmv/rmcnmv/vod/play/v2.0/{vid}?key={inkey}",
+        headers={**BROWSER_HEADERS, "Accept": "application/json", "Referer": "https://m.blog.naver.com/"},
+    )
+
+    with urllib.request.urlopen(request, timeout=30) as response:
+        items = json.loads(response.read().decode("utf-8"))["videos"]["list"]
+
+    best = max(items, key=lambda item: item["encodingOption"]["height"])
+
+    return {
+        "url": best["source"],
+        "width": best["encodingOption"]["width"],
+        "height": best["encodingOption"]["height"],
+        "duration": best["duration"],
+    }
+
+
+def fetch_post_videos(link):
+    owner, log_no = parse_post_link(link)
+    return post_videos(download_page(f"https://m.blog.naver.com/{owner}/{log_no}"))
+

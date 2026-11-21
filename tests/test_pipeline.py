@@ -1,5 +1,6 @@
 import os
 import sys
+import tempfile
 import unittest
 from datetime import datetime
 from unittest import mock
@@ -10,6 +11,7 @@ import cards  # noqa: E402
 import instagram  # noqa: E402
 import main  # noqa: E402
 import naver_blog  # noqa: E402
+import reels  # noqa: E402
 from common import KST, normalize_oauth_token  # noqa: E402
 
 
@@ -70,6 +72,32 @@ class NaverBlogTest(unittest.TestCase):
 
         self.assertEqual(naver_blog.post_text(html), "첫 문단\n둘째 문단")
         self.assertEqual(naver_blog.post_text("<html><body>없음</body></html>"), "")
+
+
+class ReelPlanTest(unittest.TestCase):
+    def test_timeline_follows_voice_lengths_and_stretches_short_ranges(self):
+        content = {
+            "lines": [
+                {"text": "**갓 삶은** 첫 족발", "speech": "갓 삶은 첫 족발", "ranges": [[30.0, 32.0]], "seen": ""},
+                {"text": "질문?", "speech": "질문", "ranges": [[10.0, 10.9]], "seen": ""},
+            ],
+            "hook": "갓 삶은 첫 족발", "cta_text": "질문", "cta_sub": "댓글로",
+        }
+        video = {"public": "videos/1", "duration": 37.6, "width": 720, "height": 720}
+        props = reels.timeline(content, [("v/01.wav", 1.9), ("v/02.wav", 2.6)], video, "푸터", "@h")
+
+        self.assertEqual(props["lines"][1]["from"], round(1.9 + reels.VOICE_GAP, 2))
+        # 두 번째 컷은 0.9초짜리 원본이라 0.7배로도 모자라서 늘어나야 한다
+        second = props["cuts"][1]
+        self.assertGreaterEqual(second["end"] - second["start"], second["duration"] * reels.MIN_RATE - 0.05)
+        self.assertEqual(props["cta"]["from"], props["lines"][1]["from"])
+
+    def test_validate_plan_drops_bad_ranges(self):
+        content = {"lines": [{"text": "a", "speech": "a", "ranges": [[1, 1.2], [5, 9]], "seen": ""}] * 4,
+                   "hook": "h", "cta_text": "q", "cta_sub": ""}
+        out = reels.validate_plan(content, duration=8.0)
+        self.assertEqual(out["lines"][0]["ranges"], [[5.0, 8.0]])
+        self.assertEqual(out["cta_sub"], "댓글로 한 단어만")
 
 
 class CategoryTest(unittest.TestCase):
@@ -188,7 +216,7 @@ class InstagramTest(unittest.TestCase):
                 return {"id": f"c{len(calls)}"}
             if path == "17/media_publish":
                 return {"id": "m1"}
-            if params and params.get("fields") == "status_code":
+            if params and params.get("fields", "").startswith("status_code"):
                 return {"status_code": "FINISHED"}
             if params and params.get("fields") == "permalink":
                 return {"permalink": "https://www.instagram.com/p/x/"}
@@ -204,6 +232,42 @@ class InstagramTest(unittest.TestCase):
         self.assertEqual(len(carousel), 1)
         self.assertEqual(carousel[0]["caption"], "캡션")
         self.assertEqual(len(carousel[0]["children"].split(",")), 2)
+
+    def test_carousel_with_video_uses_resumable_upload(self):
+        calls = []
+
+        def fake_api(method, path, params=None):
+            calls.append((method, path, dict(params or {})))
+            if path == "17/media" and params.get("upload_type") == "resumable":
+                return {"id": "v1", "uri": "https://rupload.facebook.com/ig-api-upload/v24.0/v1"}
+            if path == "17/media":
+                return {"id": f"c{len(calls)}"}
+            if path == "17/media_publish":
+                return {"id": "m2"}
+            if params and params.get("fields", "").startswith("status_code"):
+                return {"status_code": "FINISHED"}
+            if params and params.get("fields") == "permalink":
+                return {"permalink": "https://www.instagram.com/p/y/"}
+            raise AssertionError(path)
+
+        uploads = []
+        instagram._account = {"id": "17", "username": "gony", "host": "graph.facebook.com"}
+
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as file:
+            file.write(b"video")
+
+        try:
+            with mock.patch.object(instagram, "_api", side_effect=fake_api), mock.patch.object(
+                instagram, "_request", side_effect=lambda *a, **k: uploads.append((a, k)) or {"success": True}
+            ), mock.patch.dict("os.environ", {"INSTAGRAM_ACCESS_TOKEN": "t"}):
+                media = instagram.publish_carousel([("image", "https://a/1.jpg"), ("video", file.name)], "캡션", "f")
+        finally:
+            os.remove(file.name)
+
+        self.assertEqual(media["id"], "m2")
+        video = [p for _, path, p in calls if p.get("media_type") == "VIDEO"]
+        self.assertEqual(video[0]["is_carousel_item"], "true")
+        self.assertEqual(uploads[0][1]["headers"]["file_size"], "5")
 
     def test_publish_rejects_too_many_images(self):
         with self.assertRaises(ValueError):

@@ -13,6 +13,9 @@ on:
         description: "채널에 올리기 (끄면 카드만 만들어 아티팩트로 남김)"
         type: boolean
         default: false
+      reel_url:
+        description: "릴스를 새로 만들지 않고 이 mp4 주소를 올리기 (비우면 글의 영상으로 만듦)"
+        required: false
       check_account:
         description: "인스타 토큰 확인만 하기 (계정 정보만 읽고 끝, 게시 안 함)"
         type: boolean
@@ -47,6 +50,9 @@ jobs:
       CLAUDE_MODEL: ${{ vars.CLAUDE_MODEL }}
       INSTAGRAM_GRAPH_HOST: ${{ vars.INSTAGRAM_GRAPH_HOST }}
       INPUT_LINK: ${{ github.event.inputs.link }}
+      INPUT_REEL_URL: ${{ github.event.inputs.reel_url }}
+      REEL_FOOTER: ${{ vars.REEL_FOOTER }}
+      MIN_REEL_SECONDS: ${{ vars.MIN_REEL_SECONDS }}
 
     steps:
       - name: Download repository
@@ -107,6 +113,7 @@ jobs:
         if: steps.check.outputs.has_post == 'true'
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
           INSTAGRAM_USER_ID: ${{ secrets.INSTAGRAM_USER_ID }}
@@ -118,6 +125,10 @@ jobs:
 
           if [ -n "$INPUT_LINK" ]; then
             args+=(--link "$INPUT_LINK")
+          fi
+
+          if [ -n "$INPUT_REEL_URL" ]; then
+            args+=(--reel-file "$INPUT_REEL_URL")
           fi
 
           if [ "$INPUT_UPLOAD" != "true" ]; then
@@ -135,6 +146,11 @@ jobs:
             runtime/posts/*/card-*.jpg
             runtime/posts/*/caption.txt
             runtime/posts/*/content.json
+            runtime/posts/*/reel.mp4
+            runtime/posts/*/reel_plan.json
+            runtime/posts/*/reel_props.json
+            runtime/posts/*/scenes_*.jpg
+            runtime/posts/*/carousel_video.mp4
           if-no-files-found: ignore
           retention-days: 14
 
