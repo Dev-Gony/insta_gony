@@ -110,6 +110,9 @@ export const RemotionRoot: React.FC = () => {
           cta: { start: 28, seconds: 3, text: "**쌈**파? **소스**파?", sub: "댓글로 한 단어만" },
           footer: "명동 미쓰족발 · 전체 후기는 블로그",
           handle: "@yamyam_gony",
+          ambient: "videos/224485765186/01_ambient.wav",
+          hook: "**갓 삶은** 첫 족발",
+          narration: "",
         }}
       />
     </>
