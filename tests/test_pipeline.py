@@ -123,14 +123,50 @@ class MainTest(unittest.TestCase):
 
 
 class InstagramTest(unittest.TestCase):
+    def setUp(self):
+        instagram._account = None
+
+    def tearDown(self):
+        instagram._account = None
+
+    def test_account_falls_back_to_facebook_host(self):
+        hosts = []
+
+        def fake_call(host, method, path, params=None):
+            hosts.append(host)
+
+            if host == "graph.instagram.com":
+                raise instagram.InstagramError("400 Invalid OAuth access token", code=190)
+            return {"username": "yamyam_gony"}
+
+        env = {"INSTAGRAM_USER_ID": "17", "INSTAGRAM_GRAPH_HOST": ""}
+
+        with mock.patch.object(instagram, "_call", side_effect=fake_call), mock.patch.dict("os.environ", env):
+            info = instagram.account()
+            instagram.account()
+
+        self.assertEqual(info, {"id": "17", "username": "yamyam_gony", "host": "graph.facebook.com"})
+        self.assertEqual(hosts, ["graph.instagram.com", "graph.facebook.com"])
+
+    def test_account_reports_both_hosts_when_token_is_bad(self):
+        def fake_call(host, method, path, params=None):
+            raise instagram.InstagramError(f"{host} bad", code=190)
+
+        env = {"INSTAGRAM_USER_ID": "17", "INSTAGRAM_GRAPH_HOST": ""}
+
+        with mock.patch.object(instagram, "_call", side_effect=fake_call), mock.patch.dict("os.environ", env):
+            with self.assertRaises(instagram.InstagramError) as caught:
+                instagram.account()
+
+        self.assertTrue(caught.exception.token_expired)
+        self.assertIn("graph.facebook.com", str(caught.exception))
+
     def test_publish_carousel_flow(self):
         calls = []
 
         def fake_api(method, path, params=None):
             calls.append((method, path, params))
 
-            if path == "me":
-                return {"user_id": "17", "username": "gony"}
             if path == "17/media":
                 return {"id": f"c{len(calls)}"}
             if path == "17/media_publish":
@@ -141,9 +177,9 @@ class InstagramTest(unittest.TestCase):
                 return {"permalink": "https://www.instagram.com/p/x/"}
             raise AssertionError(path)
 
-        with mock.patch.object(instagram, "_api", side_effect=fake_api), mock.patch.dict(
-            "os.environ", {"INSTAGRAM_USER_ID": ""}
-        ):
+        instagram._account = {"id": "17", "username": "gony", "host": "graph.instagram.com"}
+
+        with mock.patch.object(instagram, "_api", side_effect=fake_api):
             media = instagram.publish_images(["https://a/1.jpg", "https://a/2.jpg"], "캡션")
 
         self.assertEqual(media, {"id": "m1", "permalink": "https://www.instagram.com/p/x/"})

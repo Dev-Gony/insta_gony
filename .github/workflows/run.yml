@@ -13,6 +13,10 @@ on:
         description: "채널에 올리기 (끄면 카드만 만들어 아티팩트로 남김)"
         type: boolean
         default: false
+      check_account:
+        description: "인스타 토큰 확인만 하기 (계정 정보만 읽고 끝, 게시 안 함)"
+        type: boolean
+        default: false
 
   schedule:
     # 08~22시, 2시간마다. 정각을 피해 :23분.
@@ -60,8 +64,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Check Instagram account only
+        if: github.event.inputs.check_account == 'true'
+        env:
+          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
+          INSTAGRAM_USER_ID: ${{ secrets.INSTAGRAM_USER_ID }}
+        run: python main.py --check-account
+
       - name: Check for a new blog post
         id: check
+        if: github.event.inputs.check_account != 'true'
         run: |
           if [ -n "$INPUT_LINK" ]; then
             echo "has_post=true" >> "$GITHUB_OUTPUT"

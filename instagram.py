@@ -4,9 +4,10 @@
 그래서 카드 이미지를 이 저장소의 별도 브랜치(insta-media)에 올리고 raw URL을 넘긴다.
 
 필요한 값 (GitHub Secrets):
-- INSTAGRAM_ACCESS_TOKEN: 장기 토큰(60일). "Instagram 로그인" 방식이면 graph.instagram.com,
-  "Facebook 로그인"(페이스북 페이지 연결) 방식이면 INSTAGRAM_GRAPH_HOST=graph.facebook.com
-- INSTAGRAM_USER_ID: 인스타 계정 ID (비우면 토큰으로 조회)
+- INSTAGRAM_ACCESS_TOKEN: 인스타 토큰. "Instagram 로그인" 토큰은 graph.instagram.com,
+  비즈니스 포트폴리오(통합 로그인·시스템 사용자)나 "Facebook 로그인" 토큰은 graph.facebook.com에서 받는다.
+  INSTAGRAM_GRAPH_HOST를 비우면 두 곳을 차례로 시험해 맞는 곳을 쓴다.
+- INSTAGRAM_USER_ID: 인스타 계정 ID (graph.instagram.com이면 비워도 토큰으로 조회)
 """
 
 import base64
@@ -18,7 +19,7 @@ import urllib.parse
 import urllib.request
 
 
-GRAPH_HOST = os.environ.get("INSTAGRAM_GRAPH_HOST") or "graph.instagram.com"
+GRAPH_HOSTS = ("graph.instagram.com", "graph.facebook.com")
 GRAPH_VERSION = os.environ.get("INSTAGRAM_GRAPH_VERSION") or "v24.0"
 MEDIA_BRANCH = os.environ.get("INSTA_MEDIA_BRANCH") or "insta-media"
 
@@ -168,27 +169,57 @@ def _token():
     return token
 
 
-def _api(method, path, params=None):
+_account = None
+
+
+def _call(host, method, path, params=None):
     return _request(
         method,
-        f"https://{GRAPH_HOST}/{GRAPH_VERSION}/{path}",
+        f"https://{host}/{GRAPH_VERSION}/{path}",
         params={**(params or {}), "access_token": _token()},
     )
 
 
-def account():
-    """토큰이 가리키는 인스타 계정: {"id", "username"}."""
-    user_id = (os.environ.get("INSTAGRAM_USER_ID") or "").strip()
-
+def _lookup(host, user_id):
     if user_id:
-        info = _api("GET", user_id, {"fields": "username"})
-        return {"id": user_id, "username": info.get("username")}
+        info = _call(host, "GET", user_id, {"fields": "username"})
+        return {"id": user_id, "username": info.get("username"), "host": host}
 
-    if GRAPH_HOST != "graph.instagram.com":
-        raise RuntimeError("Facebook 로그인 방식은 INSTAGRAM_USER_ID(인스타 비즈니스 계정 ID)를 넣어 주세요.")
+    if host != "graph.instagram.com":
+        raise RuntimeError(f"{host} 토큰은 INSTAGRAM_USER_ID(인스타 비즈니스 계정 ID)를 넣어 주세요.")
 
-    info = _api("GET", "me", {"fields": "user_id,username"})
-    return {"id": info.get("user_id") or info["id"], "username": info.get("username")}
+    info = _call(host, "GET", "me", {"fields": "user_id,username"})
+    return {"id": info.get("user_id") or info["id"], "username": info.get("username"), "host": host}
+
+
+def account():
+    """토큰이 가리키는 인스타 계정: {"id", "username", "host"}. 맞는 API 주소도 여기서 정한다."""
+    global _account
+
+    if _account:
+        return _account
+
+    user_id = (os.environ.get("INSTAGRAM_USER_ID") or "").strip()
+    configured = (os.environ.get("INSTAGRAM_GRAPH_HOST") or "").strip()
+    errors = []
+
+    for host in [configured] if configured else GRAPH_HOSTS:
+        try:
+            _account = _lookup(host, user_id)
+            return _account
+        except (InstagramError, RuntimeError) as error:
+            errors.append((host, error))
+
+    if len(errors) == 1:
+        raise errors[0][1]
+
+    # 토큰이 어느 쪽에서도 안 되면, 만료 여부는 마지막 오류 코드로 알린다.
+    detail = " / ".join(f"{host}: {error}" for host, error in errors)
+    raise InstagramError(f"토큰으로 인스타 계정을 찾지 못했습니다 ({detail})", code=getattr(errors[-1][1], "code", None))
+
+
+def _api(method, path, params=None):
+    return _call(account()["host"], method, path, params)
 
 
 def _wait_ready(container_id, attempts=30):
@@ -240,3 +271,13 @@ def publish_images(image_urls, caption):
         permalink = None
 
     return {"id": media_id, "permalink": permalink}
+
+
+def publishing_limit():
+    """최근 24시간 게시 수와 한도 (읽기만 함). 못 읽으면 None."""
+    try:
+        data = _api("GET", f"{account()['id']}/content_publishing_limit", {"fields": "quota_usage,config"}).get("data")
+    except InstagramError:
+        return None
+
+    return data[0] if data else None

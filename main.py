@@ -72,6 +72,7 @@ def parse_args():
     parser.add_argument("--link", help="이 글로 만들기 (기본: RSS에서 아직 안 올린 새 글 자동 선택)")
     parser.add_argument("--no-upload", action="store_true", help="카드만 만들고 올리지 않기")
     parser.add_argument("--check", action="store_true", help="올릴 새 글이 있는지만 확인 (GitHub Actions 출력 has_post)")
+    parser.add_argument("--check-account", action="store_true", help="인스타 토큰이 작동하는지만 확인 (읽기만, 게시 안 함)")
 
     return parser.parse_args()
 
@@ -105,8 +106,32 @@ def find_post(args, history, channels):
     return blog_name, naver_blog.pick_post(posts, done_links(history, channels), max_age_days=max_age)
 
 
+def check_account():
+    """토큰으로 계정 정보와 게시 한도만 읽어 본다. 아무것도 올리지 않는다."""
+    info = instagram.account()
+    print(f"인스타 계정: @{info.get('username')} (ID {info['id']}, API {info['host']})")
+
+    limit = instagram.publishing_limit()
+
+    if limit:
+        total = (limit.get("config") or {}).get("quota_total")
+        print(f"최근 24시간 게시: {limit.get('quota_usage')} / {total}")
+    else:
+        print("게시 한도는 읽지 못했습니다 (게시 권한은 실제 게시 때 확인됩니다).")
+
+    handle = (os.environ.get("INSTA_HANDLE") or "").strip().lstrip("@")
+
+    if handle and info.get("username") and handle != info["username"]:
+        raise SystemExit(f"INSTA_HANDLE(@{handle})과 토큰의 계정(@{info['username']})이 다릅니다.")
+
+
 def main():
     args = parse_args()
+
+    if args.check_account:
+        check_account()
+        return
+
     history = load_json(HISTORY_FILE, [])
     channels = enabled_channels()
 
