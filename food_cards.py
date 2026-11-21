@@ -13,42 +13,42 @@ import urllib.request
 from common import BROWSER_HEADERS, claude_json
 
 
-SLIDE_TYPES = ["cover", "photo", "menu", "info", "outro"]
+SLIDE_TYPES = ["cover", "photo", "outro"]
 PHOTO_DIR = os.path.join("video", "public", "photos")
 MAX_SLIDES = 10
 HASHTAG_COUNT = 5
 
 
+# 레퍼런스(2026-11-21 인스타에서 직접 넘겨 봄): 서울더핫플 방어 맛집(10장), _mukpunzel 산동교자(좋아요 2만),
+# 김밥대장 오믈렛김밥(좋아요 1,364). 한 가게 후기 캐러셀은 모두
+# 표지만 사진+굵은 2줄 제목, 중간은 글씨 없는 사진(외관→메뉴→음식→먹는 장면), 마지막은 사진(+질문 한 줄).
+# 정보(위치·영업시간)는 카드가 아니라 캡션 2~4줄. 해시태그 5개 안팎.
 SYSTEM_PROMPT = """너는 맛집 기록 인스타그램 계정 '얌얌고니'의 편집자다.
-블로그 주인 고니가 직접 다녀와서 쓴 방문 후기를 사진 캐러셀(7~10장)로 옮긴다.
-목표: 피드에서 표지 사진에 멈추고, 넘기면서 가게에 가고 싶어지고, 마지막에 "저장"하고 댓글을 달게 만든다.
+블로그 주인 고니가 직접 다녀와서 쓴 방문 후기를 사진 캐러셀로 옮긴다.
+큰 맛집 계정들처럼: 표지에만 굵은 제목, 중간 장은 글씨 없이 사진만, 마지막 장에 질문 한 줄.
 
 절대 규칙:
 - 본문에 없는 사실·가격·메뉴·맛 평가·영업 정보를 지어내지 않는다. 숫자와 가격은 본문 그대로.
-- 사진은 본문에 있는 [사진N]의 N만 쓴다. 장마다 그 장의 글과 가장 가까이 붙어 있는 사진을 고른다
-  (그 사진 바로 앞뒤 문장이 그 장의 내용이어야 한다). 같은 사진을 두 번 쓰지 않는다.
-- 고니 말투(친근한 존댓말·짧은 감탄)를 살리되 과장 광고 문구("인생 맛집", "미쳤다")는 쓰지 않는다.
+- 사진은 본문에 있는 [사진N]의 N만 쓴다. 같은 사진을 두 번 쓰지 않는다.
+- 과장 광고 문구("인생 맛집", "미쳤다", "역대급")는 쓰지 않는다.
 
-장 구성 (순서 유지):
-1. cover (1장): photo = 가장 먹음직스럽게 메인 메뉴가 크게 보이는 사진.
-   title = 2줄 "지역 + 대표 메뉴\\n가게 이름" (줄당 9자 이내, 예: "명동 족발\\n미쓰족발").
-   label = 이 집을 한마디로 (10자 이내, 본문 사실, 예: "오픈런 첫 족발").
-2. photo (4~6장): 가게 → 메뉴/음식 → 먹는 장면 → 마무리 흐름대로.
-   title = 그 사진에 붙은 핵심 한 줄 (16자 이내), 꼭 강조할 단어 하나를 **이렇게** 감싼다.
-   body = 보충 한 줄 (22자 이내, 없어도 됨).
-3. menu (본문에 가격이 있을 때만, 1장): title = "메뉴판", items = "메뉴 이름|가격" 최대 6개(본문 순서).
-   고니가 시킨 메뉴는 이름 앞에 "★". photo = 메뉴판·대표 음식 사진.
-4. info (본문에 주소·영업시간 등이 있을 때만, 1장): title = "저장해두고 가기",
-   items = "항목|내용" 최대 5개. 항목은 위치·영업·주차·문의·팁 중에서 (내용 24자 이내, 본문 그대로 줄여서).
-   photo = 가게 외관이나 매장 사진.
-5. outro (마지막 1장): photo = 마무리 장면 사진. title = 댓글을 부르는 질문 2줄 (줄당 12자 이내, 이 글과 관련,
-   예: "족발은 쌈 vs 그냥\\n여러분은?"). body = "전체 후기는 블로그에서".
+장 구성 (사진이 충분하면 8~10장, 적으면 있는 만큼):
+1. cover (1장): photo = 메인 메뉴가 가장 크고 먹음직스럽게 보이는 사진.
+   title = 2줄 (줄당 11자 이내). 1줄은 이 집을 넘겨 보고 싶게 만드는 본문 사실(예: "오픈런하면 갓 삶은 첫 족발",
+   "족발 시키면 칼국수가 공짜"), 2줄은 "지역 + 가게 이름"(예: "명동 미쓰족발"). 두 줄은 줄바꿈으로 나눈다.
+2. photo (사진 수에 맞춰 최대 8장): 글씨 없이 사진만. 본문 순서대로 고르되 이야기가 되게:
+   가게 외관 → 메뉴판·매장 → 음식이 나온 모습 → 가까이 → 먹는 장면 → 곁들이·마무리.
+   비슷한 사진이 연달아 있으면 더 잘 보이는 하나만. 흔들리거나 의미 없는 사진(영수증, 빈 테이블 등)은 뺀다.
+   title·body는 비운다.
+3. outro (마지막 1장): photo = 가게 외관이나 마무리 장면 (표지와 다른 사진).
+   title = 댓글을 부르는 질문 한 줄 (16자 이내, 이 글과 관련, 예: "족발은 쌈파? 소스파?").
 
-caption (인스타 본문, 링크·해시태그 제외):
-- 첫 줄: 사진을 넘기게 만드는 한 줄 훅 (본문 사실).
-- 2~3줄: 고니 말투로 무엇을 먹었고 어땠는지.
-- 빈 줄 뒤에 정보 줄 (본문에 있는 것만): "✅ 가게 이름", "📍 위치(역 기준)", "🕐 영업시간", "💰 대표 메뉴 가격".
-- 마지막 줄: 댓글을 부르는 짧은 질문.
+caption (인스타 본문, 링크·해시태그 제외). 큰 계정들처럼 담백하게:
+- 첫 줄: 훅 한 줄 (본문 사실).
+- 빈 줄 뒤 3~5문장: 고니 말투(친근한 존댓말, 짧은 감탄)로 무엇을 먹었고 어땠는지, 본문에서만.
+- 빈 줄 뒤 정보 2~3줄 (본문에 있는 것만): "📍 가게 이름 (위치·역)", "✔ 영업시간·휴무".
+- 빈 줄 뒤 마지막 줄: 댓글을 부르는 짧은 질문.
+- 이모지는 위 정보 줄 머리표(📍 ✔)만. 문장 안·끝에는 넣지 않는다.
 hashtags: # 없이 정확히 5개. 지역+메뉴 맛집, 가게 이름, 메뉴 이름처럼 실제로 검색할 것."""
 
 
@@ -109,10 +109,13 @@ def validate(content, photo_count):
         if not isinstance(photo, int) or not 1 <= photo <= photo_count:
             raise ValueError(f"없는 사진 번호: {photo} (사진 {photo_count}장)")
 
-        if photo in used:
-            # 같은 사진이 두 번 나오면 뒤의 장은 버린다 (표지·마지막 장은 지키기 위해 photo 장만).
-            if slide["type"] == "photo":
-                continue
+        if slide["type"] == "photo":
+            slide["title"] = ""
+            slide["body"] = ""
+
+        # 중간 사진 장에 같은 사진이 또 나오면 버린다 (사진이 적은 글은 outro가 표지 사진을 다시 쓸 수 있다).
+        if slide["type"] == "photo" and photo in used:
+            continue
 
         used.add(photo)
         slides.append(slide)
@@ -123,7 +126,7 @@ def validate(content, photo_count):
     if slides[-1]["type"] != "outro":
         raise ValueError("마지막 장이 outro가 아닙니다.")
 
-    if not 4 <= len(slides) <= MAX_SLIDES:
+    if not 2 <= len(slides) <= MAX_SLIDES:
         raise ValueError(f"카드 장 수가 이상합니다: {len(slides)}")
 
     content["slides"] = slides
@@ -163,7 +166,7 @@ def download_photos(content, photos, log_no):
     return folder
 
 
-def build_props(content, log_no, handle, masthead):
+def build_props(content, log_no, handle, footer):
     slides = []
 
     for slide in content["slides"]:
@@ -178,7 +181,7 @@ def build_props(content, log_no, handle, masthead):
             }
         )
 
-    return {"masthead": masthead, "handle": handle, "slides": slides}
+    return {"footer": footer, "handle": handle, "slides": slides}
 
 
 def build_caption(content, post):
@@ -187,7 +190,6 @@ def build_caption(content, post):
 
     return (
         f"{caption}\n\n"
-        "💾 저장해두고 갈 때 꺼내 보세요\n"
-        f"📖 전체 후기: {post['link']}\n\n"
+        f"전체 후기는 블로그에: {post['link']}\n\n"
         f"{hashtags}"
     )[:2200]

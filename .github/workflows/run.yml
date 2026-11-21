@@ -39,6 +39,7 @@ jobs:
       NAVER_BLOG_ID: ${{ vars.NAVER_BLOG_ID }}
       INSTA_HANDLE: ${{ vars.INSTA_HANDLE }}
       INSTA_MASTHEAD: ${{ vars.INSTA_MASTHEAD }}
+      INSTA_FOOTER: ${{ vars.INSTA_FOOTER }}
       MAX_AGE_DAYS: ${{ vars.MAX_AGE_DAYS }}
       SKIP_CATEGORIES: ${{ vars.SKIP_CATEGORIES }}
       DAILY_LIMIT: ${{ vars.DAILY_LIMIT }}

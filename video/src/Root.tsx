@@ -63,7 +63,7 @@ export const RemotionRoot: React.FC = () => {
         width={1080}
         height={1350}
         defaultProps={{
-          masthead: "얌얌고니",
+          footer: "돌아다니면서 얼마나 먹는 고니?",
           handle: "@yamyam_gony",
           slides: [
             { type: "cover", photo: "photos/sample/01.jpg", label: "오픈런 첫 족발", title: "명동 족발\n미쓰족발", body: "", items: [] },

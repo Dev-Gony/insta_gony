@@ -27,8 +27,8 @@ OUTPUT_DIR = "runtime/posts"
 # 본문이 이보다 짧으면(사진만 있는 글 등) 카드로 만들 재료가 부족하다.
 MIN_TEXT_LENGTH = 300
 
-# 사진 카드에 쓸 사진이 이보다 적으면 건너뛴다.
-MIN_PHOTOS = 5
+# 사진 카드는 사진이 최소 1장은 있어야 만든다 (적으면 장 수를 줄여서 만든다).
+MIN_PHOTOS = 1
 
 # 방문 후기만 올린다: 정보 글 카테고리는 건너뛴다 (Variable SKIP_CATEGORIES, 쉼표로).
 DEFAULT_SKIP_CATEGORIES = "먹거리 정보,방송 맛집,제철·레시피"
@@ -225,8 +225,9 @@ def main():
     print(f"카드 문구 생성 완료: {len(content['slides'])}장")
 
     food_cards.download_photos(content, photos, log_no)
-    masthead = (os.environ.get("INSTA_MASTHEAD") or blog_name or "얌얌고니").strip()[:16]
-    props = food_cards.build_props(content, log_no, handle, masthead)
+    # 표지 아래 작은 글씨: 지금 피드처럼 블로그 이름 (Variable INSTA_FOOTER로 바꿀 수 있음)
+    footer = (os.environ.get("INSTA_FOOTER") or blog_name or "").strip()[:30]
+    props = food_cards.build_props(content, log_no, handle, footer)
     images = cards.render(props, work_dir, composition="FoodCards")
     caption = food_cards.build_caption(content, post)
 
