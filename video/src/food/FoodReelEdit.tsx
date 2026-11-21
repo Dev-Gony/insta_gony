@@ -4,36 +4,31 @@ import { AbsoluteFill, Audio, OffthreadVideo, Sequence, interpolate, staticFile,
 import { z } from "zod";
 import { fontFamily as sans } from "../theme";
 
-// 얌얌고니 릴스 (편집본): 블로그 원본 영상을 1.5~2초 컷으로 잘라 순서를 바꾸고,
-// 컷마다 큰 자막(강조 단어 노랑) + 줌인/줌아웃, 마지막 3초는 댓글 키워드 CTA.
-// 기준: ~/.claude/youtube/reels.md (첫 1.5초는 움직이는 음식 컷, 1.5~2초마다 변화, CTA 하나).
+// 얌얌고니 릴스 (편집본).
+// 레퍼런스(부산맛집여기 35.3만, _mukpunzel 155.5만 — 2026-11-21 직접 확인): 내레이션 + 말에 맞춰 바뀌는 작은 자막,
+// 첫 장면만 큰 제목, 멈춘 장면은 3~4.5초씩. 원본 매장 소리는 컷과 상관없이 한 줄로 이어 깔고 내레이션 아래로 낮춘다.
+// 영상 컷(cuts)과 대사(lines)는 따로 간다: 대사가 시작할 때 그 대사의 장면이 나오도록 cuts를 맞춰 둔다.
 
 const { fontFamily: display } = loadDisplay("normal", { weights: ["400"], subsets: ["korean", "latin"] });
 
-export const reelSegmentSchema = z.object({
-  // 원본 영상에서 쓸 구간(초)
-  start: z.number(),
-  end: z.number(),
-  // 자막. **강조** 부분은 노랑. 줄바꿈 가능
-  text: z.string(),
-});
+const seconds = z.number();
 
 export const foodReelEditSchema = z.object({
-  // 30fps 고정으로 다시 인코딩한 무음 영상 (원본은 프레임 속도가 일정하지 않아 프레임을 못 찾는 일이 있음)
+  // 30fps 고정으로 다시 인코딩한 무음 영상, 원본에서 뗀 매장 소리
   video: z.string(),
-  // 원본에서 뗀 매장 소리 (wav)
   ambient: z.string(),
   width: z.number(),
   height: z.number(),
-  segments: z.array(reelSegmentSchema),
-  // 마지막 CTA 장면
-  cta: z.object({ start: z.number(), seconds: z.number(), text: z.string(), sub: z.string() }),
+  // 영상 컷: 원본 [start, end]를 출력 [from, from+duration]에 (느리면 playbackRate < 1)
+  cuts: z.array(z.object({ start: seconds, end: seconds, from: seconds, duration: seconds })),
+  // 대사: 출력 from부터 duration 동안 자막, voice가 있으면 그 음성
+  lines: z.array(z.object({ from: seconds, duration: seconds, text: z.string(), voice: z.string() })),
+  // 첫 대사 동안 위쪽에 크게
+  hook: z.string(),
+  // 마지막 장면(댓글 키워드 CTA): from부터 끝까지 어둡게 깔고 가운데 큰 글씨
+  cta: z.object({ from: seconds, text: z.string(), sub: z.string() }),
   footer: z.string(),
   handle: z.string(),
-  // 첫 컷에만 위쪽에 크게 뜨는 제목 (레퍼런스: 첫 장면만 큰 제목, 나머지는 작은 자막)
-  hook: z.string(),
-  // 내레이션 음성 파일 (public 아래 경로, 없으면 빈 문자열). 있으면 매장 소리를 낮춘다
-  narration: z.string(),
 });
 
 export type FoodReelEditProps = z.infer<typeof foodReelEditSchema>;
@@ -45,11 +40,15 @@ const SIDE = 64;
 const ink = "#141210";
 const yellow = "#FFE14D";
 
-const frames = (seconds: number) => Math.round(seconds * FPS);
+const frames = (value: number) => Math.round(value * FPS);
 
 export const calculateFoodReelEditMetadata: CalculateMetadataFunction<FoodReelEditProps> = ({ props }) => {
-  const total = props.segments.reduce((sum, s) => sum + frames(s.end - s.start), 0) + frames(props.cta.seconds);
-  return { durationInFrames: Math.max(1, total), fps: FPS };
+  const end = Math.max(
+    ...props.cuts.map((cut) => cut.from + cut.duration),
+    ...props.lines.map((line) => line.from + line.duration),
+    1,
+  );
+  return { durationInFrames: frames(end), fps: FPS };
 };
 
 const Marked: React.FC<{ text: string }> = ({ text }) => (
@@ -86,49 +85,60 @@ const fitSize = (text: string, max: number, width = W - SIDE * 2) => {
   return Math.min(max, Math.floor(width / (longest * 0.98)));
 };
 
-// 한 컷: 원본 구간 + 줌(짝수 컷 줌인, 홀수 컷 줌아웃) + 소리 앞뒤 살짝 페이드
-const Clip: React.FC<{ src: string; start: number; length: number; zoomIn: boolean; dim?: number }> = ({
-  src,
-  start,
-  length,
-  zoomIn,
-  dim = 0,
-}) => {
+// 한 컷: 흐린 배경 + 가운데 영상, 컷마다 번갈아 천천히 줌인/줌아웃
+const Cut: React.FC<{
+  src: string;
+  start: number;
+  end: number;
+  duration: number;
+  index: number;
+  box: { top: number; height: number };
+}> = ({ src, start, end, duration, index, box }) => {
   const frame = useCurrentFrame();
-  // 멈춘 장면이 많아서 줌은 천천히 (2.5~3.5초 동안 6%)
+  const length = frames(duration);
+  const zoomIn = index % 2 === 0;
   const scale = interpolate(frame, [0, length], zoomIn ? [1.0, 1.06] : [1.06, 1.0], { extrapolateRight: "clamp" });
+  const rate = Math.max(0.7, Math.min(1, (end - start) / duration));
 
   return (
-    <AbsoluteFill style={{ overflow: "hidden" }}>
-      <OffthreadVideo
-        src={src}
-        startFrom={frames(start)}
-        muted
-        style={{ width: "100%", height: "100%", objectFit: "cover", transform: `scale(${scale})` }}
-      />
-      {dim ? <AbsoluteFill style={{ backgroundColor: `rgba(0,0,0,${dim})` }} /> : null}
-    </AbsoluteFill>
+    <>
+      <AbsoluteFill style={{ overflow: "hidden" }}>
+        <OffthreadVideo
+          src={src}
+          startFrom={frames(start)}
+          playbackRate={rate}
+          muted
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            filter: "blur(40px) brightness(0.42)",
+            transform: "scale(1.2)",
+          }}
+        />
+      </AbsoluteFill>
+      <div style={{ position: "absolute", top: box.top, left: 0, width: W, height: box.height, overflow: "hidden" }}>
+        <OffthreadVideo
+          src={src}
+          startFrom={frames(start)}
+          playbackRate={rate}
+          muted
+          style={{ width: "100%", height: "100%", objectFit: "cover", transform: `scale(${scale})` }}
+        />
+      </div>
+    </>
   );
 };
 
-const Backdrop: React.FC<{ src: string; start: number }> = ({ src, start }) => (
-  <AbsoluteFill style={{ overflow: "hidden" }}>
-    <OffthreadVideo
-      src={src}
-      startFrom={frames(start)}
-      muted
-      style={{ width: "100%", height: "100%", objectFit: "cover", filter: "blur(40px) brightness(0.42)", transform: "scale(1.2)" }}
-    />
-  </AbsoluteFill>
-);
-
-// 레퍼런스처럼 영상 위 작은 자막 (말에 맞춰 바뀌는 한 줄~두 줄). 강조 단어만 노랑.
+// 말에 맞춰 바뀌는 작은 자막 (강조 단어만 노랑)
 const Subtitle: React.FC<{ text: string; top: number }> = ({ text, top }) => {
   const frame = useCurrentFrame();
   const appear = interpolate(frame, [0, 5], [0, 1], { extrapolateRight: "clamp" });
 
   return (
-    <div style={{ position: "absolute", top, left: SIDE, right: SIDE, display: "flex", justifyContent: "center", opacity: appear }}>
+    <div
+      style={{ position: "absolute", top, left: SIDE, right: SIDE, display: "flex", justifyContent: "center", opacity: appear }}
+    >
       <div
         style={{
           fontFamily: sans,
@@ -150,13 +160,23 @@ const Subtitle: React.FC<{ text: string; top: number }> = ({ text, top }) => {
   );
 };
 
-// 첫 컷에만 위쪽에 크게 뜨는 제목
 const Hook: React.FC<{ text: string; height: number }> = ({ text, height }) => {
   const frame = useCurrentFrame();
   const pop = interpolate(frame, [0, 6], [0.88, 1], { extrapolateRight: "clamp" });
 
   return (
-    <div style={{ position: "absolute", top: 0, left: SIDE, right: SIDE, height, display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div
+      style={{
+        position: "absolute",
+        top: 0,
+        left: SIDE,
+        right: SIDE,
+        height,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
       <div style={{ ...outlined(fitSize(text, 132)), transform: `scale(${pop})` }}>
         <Marked text={text} />
       </div>
@@ -164,74 +184,68 @@ const Hook: React.FC<{ text: string; height: number }> = ({ text, height }) => {
   );
 };
 
-// 매장 소리: 컷과 상관없이 원본 소리를 처음부터 한 줄로 이어 깐다 (컷마다 끊기지 않게).
-// 내레이션이 있으면 낮춘다. 처음 0.3초 페이드인, 마지막 0.8초 페이드아웃.
-const Ambient: React.FC<{ src: string; total: number; ducked: boolean }> = ({ src, total, ducked }) => {
-  const level = ducked ? 0.22 : 0.85;
-  return (
-    <Audio
-      src={src}
-      loop
-      volume={(f) =>
-        interpolate(f, [0, 9, total - 24, total], [0, level, level, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })
-      }
-    />
-  );
-};
-
 export const FoodReelEdit: React.FC<FoodReelEditProps> = (props) => {
   const src = staticFile(props.video);
-  const { durationInFrames } = useVideoConfig();
+  const { durationInFrames: total } = useVideoConfig();
   const boxHeight = Math.min(1240, Math.round((W * props.height) / props.width));
-  const boxTop = Math.round((H - boxHeight) / 2) - 10;
-  const subtitleTop = boxTop + Math.round(boxHeight * 0.68);
-  let cursor = 0;
+  const box = { top: Math.round((H - boxHeight) / 2) - 10, height: boxHeight };
+  const subtitleTop = box.top + Math.round(boxHeight * 0.7);
+  const hasVoice = props.lines.some((line) => line.voice);
+  const ambientLevel = hasVoice ? 0.18 : 0.85;
+  const ctaFrom = frames(props.cta.from);
 
   return (
     <AbsoluteFill style={{ backgroundColor: ink }}>
-      <Ambient src={staticFile(props.ambient)} total={durationInFrames} ducked={Boolean(props.narration)} />
-      {props.narration ? <Audio src={staticFile(props.narration)} volume={1} /> : null}
+      {/* 매장 소리: 한 줄로 이어서, 내레이션이 있으면 낮게 */}
+      <Audio
+        src={staticFile(props.ambient)}
+        loop
+        volume={(f) =>
+          interpolate(f, [0, 9, total - 24, total], [0, ambientLevel, ambientLevel, 0], {
+            extrapolateLeft: "clamp",
+            extrapolateRight: "clamp",
+          })
+        }
+      />
 
-      {props.segments.map((segment, index) => {
-        const length = frames(segment.end - segment.start);
-        const from = cursor;
-        cursor += length;
+      {props.cuts.map((cut, index) => (
+        <Sequence key={`cut-${index}`} from={frames(cut.from)} durationInFrames={frames(cut.duration)}>
+          <Cut src={src} start={cut.start} end={cut.end} duration={cut.duration} index={index} box={box} />
+        </Sequence>
+      ))}
 
-        return (
-          <Sequence key={index} from={from} durationInFrames={length}>
-            <Backdrop src={src} start={segment.start} />
-            <div style={{ position: "absolute", top: boxTop, left: 0, width: W, height: boxHeight, overflow: "hidden" }}>
-              <Clip src={src} start={segment.start} length={length} zoomIn={index % 2 === 0} />
-            </div>
-            {index === 0 && props.hook ? <Hook text={props.hook} height={boxTop} /> : null}
-            <Subtitle text={segment.text} top={subtitleTop} />
-            <div
-              style={{
-                position: "absolute",
-                top: boxTop + boxHeight + 34,
-                left: SIDE,
-                right: SIDE,
-                textAlign: "center",
-                fontFamily: sans,
-                fontWeight: 700,
-                fontSize: 40,
-                color: "#FFFFFF",
-                textShadow: "0 2px 10px rgba(0,0,0,0.7)",
-              }}
-            >
-              {props.footer}
-              <div style={{ fontSize: 30, opacity: 0.8, marginTop: 10 }}>{props.handle}</div>
-            </div>
-          </Sequence>
-        );
-      })}
-
-      {/* 마지막: 댓글 키워드 CTA (화면 전체를 어둡게 깔고 가운데 큰 글씨) */}
-      <Sequence from={cursor} durationInFrames={frames(props.cta.seconds)}>
-        <Backdrop src={src} start={props.cta.start} />
-        <div style={{ position: "absolute", top: boxTop, left: 0, width: W, height: boxHeight, overflow: "hidden" }}>
-          <Clip src={src} start={props.cta.start} length={frames(props.cta.seconds)} zoomIn dim={0.55} />
+      {/* 아래 안내 (CTA 전까지) */}
+      <Sequence from={0} durationInFrames={Math.max(1, ctaFrom)}>
+        <div
+          style={{
+            position: "absolute",
+            top: box.top + box.height + 34,
+            left: SIDE,
+            right: SIDE,
+            textAlign: "center",
+            fontFamily: sans,
+            fontWeight: 700,
+            fontSize: 40,
+            color: "#FFFFFF",
+            textShadow: "0 2px 10px rgba(0,0,0,0.7)",
+          }}
+        >
+          {props.footer}
+          <div style={{ fontSize: 30, opacity: 0.8, marginTop: 10 }}>{props.handle}</div>
         </div>
+      </Sequence>
+
+      {props.lines.map((line, index) => (
+        <Sequence key={`line-${index}`} from={frames(line.from)} durationInFrames={frames(line.duration)}>
+          {line.voice ? <Audio src={staticFile(line.voice)} volume={1} /> : null}
+          {index === 0 && props.hook ? <Hook text={props.hook} height={box.top} /> : null}
+          {frames(line.from) < ctaFrom ? <Subtitle text={line.text} top={subtitleTop} /> : null}
+        </Sequence>
+      ))}
+
+      {/* 마지막: 어둡게 깔고 댓글 키워드 CTA */}
+      <Sequence from={ctaFrom} durationInFrames={Math.max(1, total - ctaFrom)}>
+        <AbsoluteFill style={{ backgroundColor: "rgba(0,0,0,0.55)" }} />
         <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", padding: `0 ${SIDE}px` }}>
           <div style={outlined(fitSize(props.cta.text, 120))}>
             <Marked text={props.cta.text} />

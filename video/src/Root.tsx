@@ -103,16 +103,16 @@ export const RemotionRoot: React.FC = () => {
         width={1080}
         height={1920}
         defaultProps={{
-          video: "videos/224485765186/01.mp4",
+          video: "videos/224485765186/01_cfr.mp4",
+          ambient: "videos/224485765186/01_ambient.wav",
           width: 720,
           height: 720,
-          segments: [{ start: 34, end: 35.6, text: "**갓 삶은** 첫 족발" }],
-          cta: { start: 28, seconds: 3, text: "**쌈**파? **소스**파?", sub: "댓글로 한 단어만" },
+          cuts: [{ start: 32.8, end: 35, from: 0, duration: 2.8 }],
+          lines: [{ from: 0, duration: 2.8, text: "**갓 삶은** 첫 족발이에요", voice: "" }],
+          hook: "**갓 삶은** 첫 족발",
+          cta: { from: 2.8, text: "**쌈**파? **소스**파?", sub: "댓글로 한 단어만" },
           footer: "명동 미쓰족발 · 전체 후기는 블로그",
           handle: "@yamyam_gony",
-          ambient: "videos/224485765186/01_ambient.wav",
-          hook: "**갓 삶은** 첫 족발",
-          narration: "",
         }}
       />
     </>

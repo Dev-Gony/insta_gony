@@ -1,68 +1,156 @@
 {
   "video": "videos/224485765186/01_cfr.mp4",
+  "ambient": "videos/224485765186/01_ambient.wav",
   "width": 720,
   "height": 720,
-  "segments": [
+  "cuts": [
     {
-      "start": 33.2,
+      "start": 32.8,
       "end": 35.0,
-      "text": "한 점 집어서 **그냥** 먼저"
+      "from": 0.0,
+      "duration": 2.82
     },
     {
-      "start": 0.3,
-      "end": 3.3,
-      "text": "명동 **미쓰족발**\n오전 11시 오픈"
+      "start": 0.0,
+      "end": 3.8,
+      "from": 2.82,
+      "duration": 4.94
     },
     {
-      "start": 3.6,
+      "start": 3.8,
       "end": 6.0,
-      "text": "문 열자마자 들어갔어요"
+      "from": 7.76,
+      "duration": 2.74
     },
     {
       "start": 16.0,
-      "end": 19.0,
-      "text": "황제족발 **58,000원**"
+      "end": 19.2,
+      "from": 10.5,
+      "duration": 3.26
     },
     {
-      "start": 20.0,
-      "end": 23.0,
-      "text": "**갓 삶아서** 따끈하고 촉촉"
+      "start": 19.2,
+      "end": 22.5,
+      "from": 13.76,
+      "duration": 3.34
     },
     {
-      "start": 23.2,
-      "end": 26.2,
-      "text": "쌈채소 · 김치 · 두부까지\n**한 상 가득**"
+      "start": 22.5,
+      "end": 27.5,
+      "from": 17.1,
+      "duration": 5.06
     },
     {
-      "start": 11.2,
+      "start": 11.0,
       "end": 14.0,
-      "text": "족발 시키면 김치칼국수 **무료**"
+      "from": 22.16,
+      "duration": 4.06
     },
     {
-      "start": 13.9,
+      "start": 14.0,
       "end": 16.0,
-      "text": "새우젓 장 한 번, **양념장** 한 번"
+      "from": 26.22,
+      "duration": 2.39
     },
     {
-      "start": 30.0,
-      "end": 33.8,
-      "text": "껍질은 **쫀득**, 살은 부드럽게"
+      "start": 27.5,
+      "end": 29.0,
+      "from": 28.61,
+      "duration": 1.79
     },
     {
-      "start": 35.6,
-      "end": 37.5,
-      "text": "쌈으로도 **한 입**"
+      "start": 29.0,
+      "end": 32.8,
+      "from": 30.4,
+      "duration": 4.54
+    },
+    {
+      "start": 35.0,
+      "end": 37.6,
+      "from": 34.94,
+      "duration": 2.94
+    },
+    {
+      "start": 16.0,
+      "end": 19.8,
+      "from": 37.88,
+      "duration": 3.86
     }
   ],
+  "lines": [
+    {
+      "from": 0.0,
+      "duration": 2.82,
+      "text": "**갓 삶은** 첫 족발이에요",
+      "voice": "videos/224485765186/voice/01.wav"
+    },
+    {
+      "from": 2.82,
+      "duration": 4.94,
+      "text": "명동 **미쓰족발**, 오전 11시에 문 열어요",
+      "voice": "videos/224485765186/voice/02.wav"
+    },
+    {
+      "from": 7.76,
+      "duration": 2.74,
+      "text": "문 열자마자 들어갔어요",
+      "voice": "videos/224485765186/voice/03.wav"
+    },
+    {
+      "from": 10.5,
+      "duration": 3.26,
+      "text": "황제족발, **58,000원**",
+      "voice": "videos/224485765186/voice/04.wav"
+    },
+    {
+      "from": 13.76,
+      "duration": 3.34,
+      "text": "**갓 삶아서** 따끈하고 촉촉해요",
+      "voice": "videos/224485765186/voice/05.wav"
+    },
+    {
+      "from": 17.1,
+      "duration": 5.06,
+      "text": "쌈채소, 김치, 두부까지\n**한 상 가득**",
+      "voice": "videos/224485765186/voice/06.wav"
+    },
+    {
+      "from": 22.16,
+      "duration": 4.06,
+      "text": "족발 시키면 김치칼국수가 **무료**예요",
+      "voice": "videos/224485765186/voice/07.wav"
+    },
+    {
+      "from": 26.22,
+      "duration": 4.18,
+      "text": "새우젓 장 한 번, **양념장** 한 번",
+      "voice": "videos/224485765186/voice/08.wav"
+    },
+    {
+      "from": 30.4,
+      "duration": 4.54,
+      "text": "껍질은 **쫀득**하고, 살은 부드러워요",
+      "voice": "videos/224485765186/voice/09.wav"
+    },
+    {
+      "from": 34.94,
+      "duration": 2.94,
+      "text": "쌈으로도 **한 입**",
+      "voice": "videos/224485765186/voice/10.wav"
+    },
+    {
+      "from": 37.88,
+      "duration": 3.86,
+      "text": "여러분은 쌈파예요, 소스파예요?",
+      "voice": "videos/224485765186/voice/11.wav"
+    }
+  ],
+  "hook": "**갓 삶은**\n첫 족발",
   "cta": {
-    "start": 19.8,
-    "seconds": 3.0,
+    "from": 37.88,
     "text": "족발은\n**쌈**파? **소스**파?",
     "sub": "댓글로 한 단어만"
   },
   "footer": "명동 미쓰족발 · 전체 후기는 블로그",
-  "handle": "@yamyam_gony",
-  "hook": "**갓 삶은**\n첫 족발",
-  "narration": "",
-  "ambient": "videos/224485765186/01_ambient.wav"
+  "handle": "@yamyam_gony"
 }
