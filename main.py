@@ -101,7 +101,13 @@ def publish_instagram(post, work):
 
 def publish_reels(post, work):
     if not work.get("reel"):
-        return {"skipped": work.get("reel_skip") or "no_video"}
+        reason = work.get("reel_skip") or "no_video"
+
+        # 영상 받기·릴스 만들기 실패는 다음 실행에서 다시 (영상 없음·짧은 영상은 건너뜀으로 기록)
+        if reason in ("video_error", "reel_error"):
+            return {"retry": reason}
+
+        return {"skipped": reason}
 
     folder = f"{datetime.now(KST):%Y-%m-%d}_{work['log_no']}"
     media = instagram.publish_reel(work["reel"], work["caption"], folder)
@@ -267,15 +273,17 @@ def main():
         write_output("has_post", "false")
         return
 
-    # 하루에 올리는 글 수 제한 (Variable DAILY_LIMIT, 기본 1). 글을 지정한 수동 실행은 제외.
-    daily_limit = int(os.environ.get("DAILY_LIMIT") or 1)
+    blog_name, post = find_post(args, history, channels)
 
-    if not args.link and posted_today(history) >= daily_limit:
-        print(f"오늘은 이미 {daily_limit}개를 올려서 건너뜁니다.")
+    # 하루에 올리는 글 수 제한 (Variable DAILY_LIMIT, 기본 1). 새 글을 고를 때만 건다:
+    # 이미 일부 채널에 올라간 글(예: 카드는 올렸고 릴스가 실패한 글)을 마저 올리는 건 막지 않는다. 글을 지정한 수동 실행도 제외.
+    daily_limit = int(os.environ.get("DAILY_LIMIT") or 1)
+    started = post and any(entry["link"] == post["link"] for entry in history)
+
+    if post and not args.link and not started and posted_today(history) >= daily_limit:
+        print(f"오늘은 이미 {daily_limit}개를 올려서 새 글은 건너뜁니다.")
         write_output("has_post", "false")
         return
-
-    blog_name, post = find_post(args, history, channels)
 
     if args.check:
         write_output("has_post", "true" if post else "false")
@@ -356,7 +364,17 @@ def main():
             failed.append(channel)
             continue
 
+        if result.get("retry"):
+            # 릴스 만들기가 잠깐 실패한 경우(TTS 한도 등): 기록하지 않고 다음 실행에서 다시
+            print(f"{channel}: 이번엔 못 만들어서 다음 실행에서 다시 시도 ({result['retry']})")
+            continue
+
         record(history, {"link": post["link"], "title": post["title"], "channel": channel, **result})
+
+        if result.get("skipped"):
+            print(f"{channel} 건너뜀: {result['skipped']}")
+            continue
+
         where = result.get("permalink") or result.get("media_id")
         print(f"{channel} 게시 완료: {where}")
         notify_slack(f":camera_with_flash: {channel} 게시: {post['title']}\n{where}")
