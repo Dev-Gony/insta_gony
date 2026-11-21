@@ -59,7 +59,9 @@
 | Variable | `CHANNELS` | 올릴 채널, 쉼표로 (기본 `instagram`) |
 | Variable | `CLAUDE_MODEL` | 카드 문구 모델 (기본 `sonnet`) |
 
-페이스북 페이지에 연결한 "Facebook 로그인" 방식 토큰을 쓰면 Variable `INSTAGRAM_GRAPH_HOST=graph.facebook.com`을 넣고, `INSTAGRAM_USER_ID`는 꼭 넣어야 한다.
+API 주소는 자동으로 고른다: graph.instagram.com을 먼저 시험하고, 안 되면 graph.facebook.com(비즈니스 포트폴리오의 "통합 로그인" 시스템 사용자 토큰, "Facebook 로그인" 토큰)을 쓴다. graph.facebook.com 쪽 토큰이면 `INSTAGRAM_USER_ID`를 꼭 넣는다. 고정하려면 Variable `INSTAGRAM_GRAPH_HOST`.
+
+토큰만 확인하려면: Actions → Blog to SNS → Run workflow에서 `check_account`를 켜고 실행 (계정 이름·게시 한도만 읽고 끝남).
 
 ### 4. 시험
 
