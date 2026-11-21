@@ -8,146 +8,110 @@
       "start": 32.8,
       "end": 35.0,
       "from": 0.0,
-      "duration": 2.82
+      "duration": 2.04
     },
     {
       "start": 0.0,
-      "end": 3.8,
-      "from": 2.82,
-      "duration": 4.94
+      "end": 2.4,
+      "from": 2.04,
+      "duration": 2.26
     },
     {
       "start": 3.8,
-      "end": 6.0,
-      "from": 7.76,
-      "duration": 2.74
+      "end": 5.2,
+      "from": 4.3,
+      "duration": 1.32
     },
     {
       "start": 16.0,
       "end": 19.2,
-      "from": 10.5,
-      "duration": 3.26
+      "from": 5.62,
+      "duration": 2.34
     },
     {
       "start": 19.2,
       "end": 22.5,
-      "from": 13.76,
-      "duration": 3.34
+      "from": 7.96,
+      "duration": 2.42
     },
     {
       "start": 22.5,
-      "end": 27.5,
-      "from": 17.1,
-      "duration": 5.06
+      "end": 27.0,
+      "from": 10.38,
+      "duration": 3.93
     },
     {
       "start": 11.0,
-      "end": 14.0,
-      "from": 22.16,
-      "duration": 4.06
-    },
-    {
-      "start": 14.0,
-      "end": 16.0,
-      "from": 26.22,
-      "duration": 2.39
-    },
-    {
-      "start": 27.5,
-      "end": 29.0,
-      "from": 28.61,
-      "duration": 1.79
+      "end": 14.2,
+      "from": 14.31,
+      "duration": 3.04
     },
     {
       "start": 29.0,
       "end": 32.8,
-      "from": 30.4,
-      "duration": 4.54
+      "from": 17.35,
+      "duration": 3.34
     },
     {
       "start": 35.0,
       "end": 37.6,
-      "from": 34.94,
-      "duration": 2.94
-    },
-    {
-      "start": 16.0,
-      "end": 19.8,
-      "from": 37.88,
-      "duration": 3.86
+      "from": 20.69,
+      "duration": 3.67
     }
   ],
   "lines": [
     {
       "from": 0.0,
-      "duration": 2.82,
+      "duration": 2.04,
       "text": "**갓 삶은** 첫 족발이에요",
-      "voice": "videos/224485765186/voice/01.wav"
+      "voice": "videos/224485765186/voice/fast/01.wav"
     },
     {
-      "from": 2.82,
-      "duration": 4.94,
+      "from": 2.04,
+      "duration": 3.58,
       "text": "명동 **미쓰족발**, 오전 11시에 문 열어요",
-      "voice": "videos/224485765186/voice/02.wav"
+      "voice": "videos/224485765186/voice/fast/02.wav"
     },
     {
-      "from": 7.76,
-      "duration": 2.74,
-      "text": "문 열자마자 들어갔어요",
-      "voice": "videos/224485765186/voice/03.wav"
-    },
-    {
-      "from": 10.5,
-      "duration": 3.26,
+      "from": 5.62,
+      "duration": 2.34,
       "text": "황제족발, **58,000원**",
-      "voice": "videos/224485765186/voice/04.wav"
+      "voice": "videos/224485765186/voice/fast/04.wav"
     },
     {
-      "from": 13.76,
-      "duration": 3.34,
+      "from": 7.96,
+      "duration": 2.42,
       "text": "**갓 삶아서** 따끈하고 촉촉해요",
-      "voice": "videos/224485765186/voice/05.wav"
+      "voice": "videos/224485765186/voice/fast/05.wav"
     },
     {
-      "from": 17.1,
-      "duration": 5.06,
+      "from": 10.38,
+      "duration": 3.93,
       "text": "쌈채소, 김치, 두부까지\n**한 상 가득**",
-      "voice": "videos/224485765186/voice/06.wav"
+      "voice": "videos/224485765186/voice/fast/06.wav"
     },
     {
-      "from": 22.16,
-      "duration": 4.06,
+      "from": 14.31,
+      "duration": 3.04,
       "text": "족발 시키면 김치칼국수가 **무료**예요",
-      "voice": "videos/224485765186/voice/07.wav"
+      "voice": "videos/224485765186/voice/fast/07.wav"
     },
     {
-      "from": 26.22,
-      "duration": 4.18,
-      "text": "새우젓 장 한 번, **양념장** 한 번",
-      "voice": "videos/224485765186/voice/08.wav"
-    },
-    {
-      "from": 30.4,
-      "duration": 4.54,
+      "from": 17.35,
+      "duration": 3.34,
       "text": "껍질은 **쫀득**하고, 살은 부드러워요",
-      "voice": "videos/224485765186/voice/09.wav"
+      "voice": "videos/224485765186/voice/fast/09.wav"
     },
     {
-      "from": 34.94,
-      "duration": 2.94,
-      "text": "쌈으로도 **한 입**",
-      "voice": "videos/224485765186/voice/10.wav"
-    },
-    {
-      "from": 37.88,
-      "duration": 3.86,
+      "from": 20.69,
+      "duration": 3.67,
       "text": "여러분은 쌈파예요, 소스파예요?",
-      "voice": "videos/224485765186/voice/11.wav"
+      "voice": "videos/224485765186/voice/fast/11.wav"
     }
   ],
   "hook": "**갓 삶은**\n첫 족발",
   "cta": {
-    "from": 37.88,
+    "from": 20.69,
     "text": "족발은\n**쌈**파? **소스**파?",
     "sub": "댓글로 한 단어만"
   },
