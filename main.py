@@ -15,6 +15,7 @@ import os
 from datetime import datetime
 
 import cards
+import food_cards
 import instagram
 import naver_blog
 from common import KST, load_json, notify_slack, save_json
@@ -25,6 +26,31 @@ OUTPUT_DIR = "runtime/posts"
 
 # 본문이 이보다 짧으면(사진만 있는 글 등) 카드로 만들 재료가 부족하다.
 MIN_TEXT_LENGTH = 300
+
+# 사진 카드에 쓸 사진이 이보다 적으면 건너뛴다.
+MIN_PHOTOS = 5
+
+# 방문 후기만 올린다: 정보 글 카테고리는 건너뛴다 (Variable SKIP_CATEGORIES, 쉼표로).
+DEFAULT_SKIP_CATEGORIES = "먹거리 정보,방송 맛집,제철·레시피"
+
+
+def skip_categories():
+    value = os.environ.get("SKIP_CATEGORIES")
+    value = DEFAULT_SKIP_CATEGORIES if value is None or not value.strip() else value
+    return {name.strip() for name in value.split(",") if name.strip()}
+
+
+def posted_today(history, now=None):
+    """오늘(KST) 실제로 올린 글 수 (건너뛴 것 제외, 글 단위)."""
+    today = (now or datetime.now(KST)).date()
+    links = {
+        entry["link"]
+        for entry in history
+        if not entry.get("skipped")
+        and entry.get("at")
+        and datetime.fromisoformat(entry["at"]).astimezone(KST).date() == today
+    }
+    return len(links)
 
 
 def enabled_channels():
@@ -102,6 +128,8 @@ def find_post(args, history, channels):
 
     blog_name, posts = naver_blog.fetch_posts(naver_blog.blog_id())
     max_age = int(os.environ.get("MAX_AGE_DAYS") or 3)
+    skipped = skip_categories()
+    posts = [post for post in posts if post["category"] not in skipped]
 
     return blog_name, naver_blog.pick_post(posts, done_links(history, channels), max_age_days=max_age)
 
@@ -146,6 +174,14 @@ def main():
         write_output("has_post", "false")
         return
 
+    # 하루에 올리는 글 수 제한 (Variable DAILY_LIMIT, 기본 1). 글을 지정한 수동 실행은 제외.
+    daily_limit = int(os.environ.get("DAILY_LIMIT") or 1)
+
+    if not args.link and posted_today(history) >= daily_limit:
+        print(f"오늘은 이미 {daily_limit}개를 올려서 건너뜁니다.")
+        write_output("has_post", "false")
+        return
+
     blog_name, post = find_post(args, history, channels)
 
     if args.check:
@@ -158,7 +194,7 @@ def main():
         return
 
     print(f"선택한 글: {post['title'] or post['link']}")
-    text = naver_blog.fetch_post_text(post["link"])
+    text, photos = naver_blog.fetch_post_content(post["link"])
 
     if not post["title"]:
         post["title"] = text.split("\n", 1)[0][:80]
@@ -166,6 +202,11 @@ def main():
     if len(text) < MIN_TEXT_LENGTH:
         print(f"본문이 너무 짧아 건너뜁니다 ({len(text)}자).")
         record(history, {"link": post["link"], "title": post["title"], "channel": "all", "skipped": "short"})
+        return
+
+    if len(photos) < MIN_PHOTOS:
+        print(f"사진이 적어 건너뜁니다 ({len(photos)}장).")
+        record(history, {"link": post["link"], "title": post["title"], "channel": "all", "skipped": "photos"})
         return
 
     upload = not args.no_upload
@@ -179,12 +220,15 @@ def main():
     work_dir = os.path.join(OUTPUT_DIR, log_no)
     os.makedirs(work_dir, exist_ok=True)
 
-    content = cards.generate(post, text)
+    content = food_cards.generate(post, text, photos)
     save_json(os.path.join(work_dir, "content.json"), content)
     print(f"카드 문구 생성 완료: {len(content['slides'])}장")
 
-    images = cards.render(cards.build_props(content, post, blog_name, handle), work_dir)
-    caption = cards.build_caption(content, post)
+    food_cards.download_photos(content, photos, log_no)
+    masthead = (os.environ.get("INSTA_MASTHEAD") or blog_name or "얌얌고니").strip()[:16]
+    props = food_cards.build_props(content, log_no, handle, masthead)
+    images = cards.render(props, work_dir, composition="FoodCards")
+    caption = food_cards.build_caption(content, post)
 
     with open(os.path.join(work_dir, "caption.txt"), "w", encoding="utf-8") as file:
         file.write(caption)

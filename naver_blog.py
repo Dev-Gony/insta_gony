@@ -107,6 +107,79 @@ def fetch_post_text(link):
     return post_text(download_page(f"https://m.blog.naver.com/{owner}/{log_no}"))
 
 
+PHOTO_SIZE = "w966"
+
+
+def _photo_url(img):
+    url = img.get("data-lazy-src") or img.get("src") or ""
+
+    if "pstatic.net" not in url:
+        return None
+
+    # 글 안의 썸네일 크기(type=w80 등)를 큰 크기로 바꾼다.
+    base = url.split("?", 1)[0]
+    return f"{base}?type={PHOTO_SIZE}"
+
+
+def post_content(html):
+    """본문을 글 순서대로: 글 사이사이에 [사진N] 표시를 넣은 글자와 사진 주소 목록.
+
+    돌려주는 값: (text, photos). photos[N-1]이 [사진N].
+    소제목(인용구)은 "## ", 지도(체크인 장소)는 "[장소] 이름 / 주소"로 넣는다.
+    """
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+    root = soup.select_one(".se-main-container")
+
+    if not root:
+        return post_text(html), []
+
+    lines = []
+    photos = []
+
+    for component in root.select(":scope > .se-component"):
+        classes = component.get("class") or []
+
+        if any(name in classes for name in ("se-image", "se-imageStrip", "se-imageGroup")):
+            for img in component.select("img"):
+                url = _photo_url(img)
+
+                if url and url not in photos:
+                    photos.append(url)
+                    lines.append(f"[사진{len(photos)}]")
+            continue
+
+        if "se-placesMap" in classes:
+            name = component.select_one(".se-map-title")
+            address = component.select_one(".se-map-address")
+
+            if name:
+                lines.append(f"[장소] {name.get_text(strip=True)} / {address.get_text(strip=True) if address else ''}".strip(" /"))
+            continue
+
+        if "se-quotation" in classes:
+            text = component.get_text(" ", strip=True).replace("​", "").strip()
+
+            if text:
+                lines.append(f"## {text}")
+            continue
+
+        if "se-text" in classes:
+            for block in component.select(".se-text-paragraph"):
+                text = block.get_text(" ", strip=True).replace("​", "").strip()
+
+                if text:
+                    lines.append(text)
+
+    return "\n".join(lines)[:MAX_SOURCE_LENGTH], photos
+
+
+def fetch_post_content(link):
+    owner, log_no = parse_post_link(link)
+    return post_content(download_page(f"https://m.blog.naver.com/{owner}/{log_no}"))
+
+
 def pick_post(posts, done_links, now=None, max_age_days=3):
     """아직 안 올린 글 중 가장 오래된 것 1개 (너무 오래된 글은 제외, 처음 연결할 때 옛 글이 쏟아지지 않게)."""
     now = now or datetime.now(KST)
