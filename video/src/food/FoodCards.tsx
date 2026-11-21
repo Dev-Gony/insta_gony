@@ -37,8 +37,10 @@ const outlined = (size: number): React.CSSProperties => ({
 
 // 가장 긴 줄이 카드 폭에 들어가게 글씨 크기를 정한다 (한글 한 글자 ≈ 글씨 크기).
 const fitSize = (text: string, max: number, width = W - SIDE * 2) => {
-  const longest = Math.max(...text.split("\n").map((line) => line.length), 1);
-  return Math.min(max, Math.floor(width / longest));
+  // 띄어쓰기는 반 글자로 센다
+  const units = (line: string) => [...line].reduce((sum, char) => sum + (char === " " ? 0.45 : 1), 0);
+  const longest = Math.max(...text.split("\n").map(units), 1);
+  return Math.min(max, Math.floor(width / (longest * 0.98)));
 };
 
 const Photo: React.FC<{ src: string; dim?: number }> = ({ src, dim = 0 }) => (
@@ -73,7 +75,7 @@ const Cover: React.FC<{ slide: FoodSlide; footer: string }> = ({ slide, footer }
     {/* 제목 뒤만 살짝 어둡게 (사진은 최대한 그대로) */}
     <AbsoluteFill style={{ background: "radial-gradient(ellipse 70% 30% at 50% 50%, rgba(0,0,0,0.32), rgba(0,0,0,0))" }} />
     <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", padding: `0 ${SIDE}px` }}>
-      <div style={outlined(fitSize(slide.title, 118))}>{slide.title}</div>
+      <div style={outlined(fitSize(slide.title, 150))}>{slide.title}</div>
     </AbsoluteFill>
     {footer ? <Small text={footer} bottom={58} /> : null}
   </>
@@ -81,9 +83,9 @@ const Cover: React.FC<{ slide: FoodSlide; footer: string }> = ({ slide, footer }
 
 const Outro: React.FC<{ slide: FoodSlide; handle: string }> = ({ slide, handle }) => (
   <>
-    <Photo src={slide.photo} dim={0.5} />
+    <Photo src={slide.photo} dim={0.62} />
     <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", padding: `0 ${SIDE}px` }}>
-      <div style={outlined(fitSize(slide.title, 92))}>{slide.title}</div>
+      <div style={outlined(fitSize(slide.title, 120))}>{slide.title}</div>
       <div
         style={{
           marginTop: 46,
