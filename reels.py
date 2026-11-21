@@ -290,27 +290,75 @@ def validate_plan(content, duration):
 # 4. 내레이션
 # ---------------------------------------------------------------------------
 
-def narrate(content, voice_dir):
-    """대사마다 속삭이는 음성 → 앞뒤 빈 소리 자르고 1.12배. 돌려주는 값: 줄마다 (파일, 초)."""
-    os.makedirs(voice_dir, exist_ok=True)
-    results = []
+def _silences(path, noise="-38dB", minimum=0.3):
+    """(시작, 끝) 무음 구간 목록."""
+    import re
 
-    for index, line in enumerate(content["lines"], start=1):
-        raw = os.path.join(voice_dir, f"raw_{index:02d}.wav")
+    result = subprocess.run(
+        [ffmpeg_exe(), "-i", path, "-af", f"silencedetect=noise={noise}:d={minimum}", "-f", "null", "-"],
+        capture_output=True, text=True, encoding="utf-8", errors="ignore",
+    )
+    starts = [float(x) for x in re.findall(r"silence_start: ([0-9.]+)", result.stderr)]
+    ends = [float(x) for x in re.findall(r"silence_end: ([0-9.]+)", result.stderr)]
+    return list(zip(starts, ends))
+
+
+def _split_points(path, count):
+    """한 번에 읽은 음성을 count줄로 나눌 자리(초): 가장 긴 쉼 count-1개의 가운데."""
+    total = wav_seconds(path)
+
+    for noise in ("-38dB", "-34dB", "-42dB", "-30dB"):
+        gaps = [(start, end) for start, end in _silences(path, noise) if 0.2 < start and end < total - 0.2]
+
+        if len(gaps) >= count - 1:
+            longest = sorted(gaps, key=lambda gap: gap[1] - gap[0], reverse=True)[: count - 1]
+            return sorted((start + end) / 2 for start, end in longest)
+
+    raise RuntimeError(f"내레이션을 {count}줄로 나눌 쉼을 찾지 못했습니다.")
+
+
+def narrate(content, voice_dir):
+    """대사 전체를 TTS 한 번으로 읽고(무료 한도 아끼기) 줄 사이 쉼에서 잘라 나눈다.
+
+    줄마다: 앞뒤 빈 소리 자르고 1.12배. 나누기가 안 되면 줄마다 따로 부른다.
+    돌려주는 값: 줄마다 (파일, 초).
+    """
+    os.makedirs(voice_dir, exist_ok=True)
+    lines = content["lines"]
+    whole = os.path.join(voice_dir, "whole.wav")
+    script = "\n".join(f"{line['speech'].rstrip('.')}." for line in lines)
+    style = tts.WHISPER_STYLE.replace(
+        "문장만 읽고 다른 말은 하지 마세요: ",
+        "줄마다 한 문장이고, 줄과 줄 사이에는 1초쯤 쉬어 주세요. 문장만 읽고 다른 말은 하지 마세요:\n",
+    )
+    tts.synthesize(script, whole, style=style)
+
+    try:
+        cuts = _split_points(whole, len(lines))
+        pieces = list(zip([0.0] + cuts, cuts + [wav_seconds(whole) + 1]))
+    except RuntimeError as error:
+        print(f"{error} → 줄마다 따로 만듭니다.")
+        pieces = None
+
+    results = []
+    trim = (
+        "silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.05,areverse,"
+        f"silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.08,areverse,atempo={VOICE_TEMPO}"
+    )
+
+    for index, line in enumerate(lines, start=1):
         path = os.path.join(voice_dir, f"{index:02d}.wav")
-        tts.synthesize(line["speech"], raw)
-        run_ffmpeg([
-            "-i", raw,
-            "-af",
-            "silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.05,areverse,"
-            f"silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.08,areverse,atempo={VOICE_TEMPO}",
-            path,
-        ])
-        os.remove(raw)
+
+        if pieces:
+            start, end = pieces[index - 1]
+            run_ffmpeg(["-i", whole, "-ss", f"{start:.3f}", "-to", f"{end:.3f}", "-af", trim, path])
+        else:
+            raw = os.path.join(voice_dir, f"raw_{index:02d}.wav")
+            tts.synthesize(line["speech"], raw)
+            run_ffmpeg(["-i", raw, "-af", trim, path])
+            os.remove(raw)
+
         results.append((path, wav_seconds(path)))
-        # 무료 한도(분당 요청 수)
-        import time
-        time.sleep(6)
 
     return results
 
