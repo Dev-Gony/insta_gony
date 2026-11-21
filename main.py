@@ -4,7 +4,8 @@
 → Remotion으로 카드 JPEG → 켜 둔 채널(CHANNELS)마다 게시 → config/history.json
 
 채널
-- instagram: 카드뉴스 캐러셀 (지금 동작)
+- instagram: 사진 카드 캐러셀. 글의 영상이 짧으면(MIN_REEL_SECONDS 미만) 표지 다음 장에 그 영상을 넣는다
+- reels: 글의 영상이 충분히 길면 속삭이는 내레이션 릴스 (reels.py). 영상이 없으면 건너뜀
 - threads, clip: 자리만 잡아 둠 (README의 "다음 할 일")
 
 설정 (GitHub Variables / Secrets): README.md 참고
@@ -14,10 +15,14 @@ import argparse
 import os
 from datetime import datetime
 
+import shutil
+import urllib.request
+
 import cards
 import food_cards
 import instagram
 import naver_blog
+import reels
 from common import KST, load_json, notify_slack, save_json
 
 
@@ -54,7 +59,7 @@ def posted_today(history, now=None):
 
 
 def enabled_channels():
-    value = os.environ.get("CHANNELS") or "instagram"
+    value = os.environ.get("CHANNELS") or "instagram,reels"
     return [name.strip() for name in value.split(",") if name.strip()]
 
 
@@ -79,13 +84,34 @@ def channel_done(history, link, channel):
 def publish_instagram(post, work):
     folder = f"{datetime.now(KST):%Y-%m-%d}_{work['log_no']}"
     urls = instagram.host_images(work["images"], folder)
-    media = instagram.publish_images(urls, work["caption"])
+
+    if work.get("carousel_video"):
+        # 짧은 영상은 표지 다음 장에 (캐러셀은 10장까지 → 넘치면 마지막 장 앞의 사진을 하나 뺀다)
+        items = [("image", urls[0]), ("video", work["carousel_video"])] + [("image", url) for url in urls[1:]]
+
+        while len(items) > instagram.MAX_CAROUSEL:
+            items.pop(-2)
+
+        media = instagram.publish_carousel(items, work["caption"], folder)
+    else:
+        media = instagram.publish_images(urls, work["caption"])
+
+    return {"media_id": media["id"], "permalink": media.get("permalink")}
+
+
+def publish_reels(post, work):
+    if not work.get("reel"):
+        return {"skipped": work.get("reel_skip") or "no_video"}
+
+    folder = f"{datetime.now(KST):%Y-%m-%d}_{work['log_no']}"
+    media = instagram.publish_reel(work["reel"], work["caption"], folder)
 
     return {"media_id": media["id"], "permalink": media.get("permalink")}
 
 
 PUBLISHERS = {
     "instagram": publish_instagram,
+    "reels": publish_reels,
 }
 
 
@@ -99,6 +125,7 @@ def parse_args():
     parser.add_argument("--no-upload", action="store_true", help="카드만 만들고 올리지 않기")
     parser.add_argument("--check", action="store_true", help="올릴 새 글이 있는지만 확인 (GitHub Actions 출력 has_post)")
     parser.add_argument("--check-account", action="store_true", help="인스타 토큰이 작동하는지만 확인 (읽기만, 게시 안 함)")
+    parser.add_argument("--reel-file", help="릴스를 새로 만들지 않고 이 mp4(경로나 URL)를 올리기")
 
     return parser.parse_args()
 
@@ -164,6 +191,59 @@ def check_account():
 
     if handle and info.get("username") and handle != info["username"]:
         raise SystemExit(f"INSTA_HANDLE(@{handle})과 토큰의 계정(@{info['username']})이 다릅니다.")
+
+
+def prepare_video(args, post, text, work, work_dir, channels, history, footer, handle):
+    """글의 영상: 짧으면 캐러셀에 넣을 세로 영상, 길면 릴스. 영상 쪽이 실패해도 카드 게시는 막지 않는다."""
+    need_reel = "reels" in channels and not channel_done(history, post["link"], "reels")
+    need_carousel = "instagram" in channels and not channel_done(history, post["link"], "instagram")
+
+    if args.reel_file:
+        path = os.path.join(work_dir, "reel.mp4")
+
+        if args.reel_file.startswith("http"):
+            with urllib.request.urlopen(args.reel_file, timeout=300) as response, open(path, "wb") as file:
+                shutil.copyfileobj(response, file)
+        elif os.path.abspath(args.reel_file) != os.path.abspath(path):
+            shutil.copyfile(args.reel_file, path)
+
+        work["reel"] = path
+        print(f"릴스 파일 사용: {args.reel_file}")
+        return
+
+    if not (need_reel or need_carousel):
+        return
+
+    try:
+        video = reels.download_video(post["link"], work["log_no"])
+    except Exception as error:
+        print(f"영상 받기 실패 (카드만 올림): {error}")
+        work["reel_skip"] = "video_error"
+        return
+
+    if not video:
+        print("글에 영상이 없어 카드만 올립니다.")
+        return
+
+    print(f"글의 영상: {video['duration']:.1f}초 {video['width']}x{video['height']}")
+
+    if video["duration"] < reels.MIN_REEL_SECONDS:
+        work["reel_skip"] = "short_video"
+
+        if need_carousel:
+            work["carousel_video"] = reels.carousel_video(video, os.path.join(work_dir, "carousel_video.mp4"))
+            print("영상이 짧아 캐러셀 2번째 장에 넣습니다.")
+        return
+
+    if not need_reel:
+        return
+
+    try:
+        work["reel"], _ = reels.make_reel(post, text, video, work_dir, footer, handle)
+    except Exception as error:
+        print(f"릴스 만들기 실패 (카드만 올림): {error}")
+        notify_slack(f":warning: 릴스 만들기 실패: {post['title']}\n{error}")
+        work["reel_skip"] = "reel_error"
 
 
 def main():
@@ -249,10 +329,14 @@ def main():
 
     print(f"카드 렌더링 완료: {work_dir} ({len(images)}장)")
 
+    work = {"log_no": log_no, "images": images, "caption": caption, "content": content}
+    # 릴스 아래쪽 안내 한 줄 (Variable REEL_FOOTER)
+    reel_footer = (os.environ.get("REEL_FOOTER") or "전체 후기는 블로그에").strip()
+    prepare_video(args, post, text, work, work_dir, channels, history, reel_footer, handle)
+
     if not upload:
         return
 
-    work = {"log_no": log_no, "images": images, "caption": caption, "content": content}
     failed = []
 
     for channel in channels:

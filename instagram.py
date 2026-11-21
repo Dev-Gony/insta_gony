@@ -222,17 +222,18 @@ def _api(method, path, params=None):
     return _call(account()["host"], method, path, params)
 
 
-def _wait_ready(container_id, attempts=30):
+def _wait_ready(container_id, attempts=30, interval=3):
     for _ in range(attempts):
-        status = _api("GET", container_id, {"fields": "status_code"}).get("status_code")
+        info = _api("GET", container_id, {"fields": "status_code,status"})
+        status = info.get("status_code")
 
         if status == "FINISHED":
             return
 
         if status in ("ERROR", "EXPIRED"):
-            raise InstagramError(f"미디어 처리 실패: {container_id} {status}")
+            raise InstagramError(f"미디어 처리 실패: {container_id} {status} {info.get('status') or ''}")
 
-        time.sleep(3)
+        time.sleep(interval)
 
     raise InstagramError(f"미디어 처리가 끝나지 않습니다: {container_id}")
 
@@ -281,3 +282,92 @@ def publishing_limit():
         return None
 
     return data[0] if data else None
+
+
+# ---------------------------------------------------------------------------
+# 동영상 (릴스, 캐러셀 속 영상)
+# ---------------------------------------------------------------------------
+
+def _resumable_container(user_id, params, path):
+    """동영상 컨테이너를 만들고 파일을 직접 올린다 (공개 URL 필요 없음). 돌려주는 값: 컨테이너 ID."""
+    created = _api("POST", f"{user_id}/media", {**params, "upload_type": "resumable"})
+    container_id = created["id"]
+    upload_uri = created.get("uri") or f"https://rupload.facebook.com/ig-api-upload/{GRAPH_VERSION}/{container_id}"
+    size = os.path.getsize(path)
+
+    with open(path, "rb") as file:
+        body = file.read()
+
+    _request(
+        "POST",
+        upload_uri,
+        headers={"Authorization": f"OAuth {_token()}", "offset": "0", "file_size": str(size)},
+        body=body,
+        timeout=600,
+    )
+    return container_id
+
+
+def _video_container(user_id, params, path, folder):
+    """올려 보고, 안 되면 저장소에 올린 공개 URL(video_url)로 다시."""
+    try:
+        return _resumable_container(user_id, params, path)
+    except InstagramError as error:
+        print(f"직접 올리기 실패, 공개 URL로 다시: {error}")
+
+    url = host_images([path], folder)[0]
+    return _api("POST", f"{user_id}/media", {**params, "video_url": url})["id"]
+
+
+def publish_reel(path, caption, folder, thumb_offset_ms=500):
+    """릴스 게시. 돌려주는 값: {"id", "permalink"}."""
+    user_id = account()["id"]
+    container = _video_container(
+        user_id,
+        {"media_type": "REELS", "caption": caption, "share_to_feed": "true", "thumb_offset": str(thumb_offset_ms)},
+        path,
+        folder,
+    )
+    # 동영상은 처리에 몇 분 걸릴 수 있다
+    _wait_ready(container, attempts=80, interval=5)
+    media_id = _api("POST", f"{user_id}/media_publish", {"creation_id": container})["id"]
+
+    try:
+        permalink = _api("GET", media_id, {"fields": "permalink"}).get("permalink")
+    except InstagramError:
+        permalink = None
+
+    return {"id": media_id, "permalink": permalink}
+
+
+def publish_carousel(items, caption, folder):
+    """사진과 영상이 섞인 캐러셀. items: [("image", 공개 URL) 또는 ("video", 로컬 경로)], 2~10개."""
+    if not 2 <= len(items) <= MAX_CAROUSEL:
+        raise ValueError(f"캐러셀은 2~{MAX_CAROUSEL}장이어야 합니다: {len(items)}")
+
+    user_id = account()["id"]
+    children = []
+
+    for kind, value in items:
+        if kind == "video":
+            child = _video_container(user_id, {"media_type": "VIDEO", "is_carousel_item": "true"}, value, folder)
+            _wait_ready(child, attempts=80, interval=5)
+        else:
+            child = _api("POST", f"{user_id}/media", {"image_url": value, "is_carousel_item": "true"})["id"]
+            _wait_ready(child)
+
+        children.append(child)
+
+    container = _api(
+        "POST", f"{user_id}/media", {"media_type": "CAROUSEL", "children": ",".join(children), "caption": caption}
+    )["id"]
+    _wait_ready(container)
+    media_id = _api("POST", f"{user_id}/media_publish", {"creation_id": container})["id"]
+
+    try:
+        permalink = _api("GET", media_id, {"fields": "permalink"}).get("permalink")
+    except InstagramError:
+        permalink = None
+
+    return {"id": media_id, "permalink": permalink}
+
