@@ -72,6 +72,23 @@ class NaverBlogTest(unittest.TestCase):
         self.assertEqual(naver_blog.post_text("<html><body>없음</body></html>"), "")
 
 
+class CategoryTest(unittest.TestCase):
+    TREE = {"11": ("맛집", ""), "18": ("서울", "11"), "13": ("여행", ""), "21": ("서울", "13"), "60": ("방송 맛집", "")}
+
+    def test_only_food_subcategories_pass(self):
+        self.assertTrue(naver_blog.in_categories("18", self.TREE, {"11"}))
+        self.assertTrue(naver_blog.in_categories("11", self.TREE, {"11"}))
+        # 이름이 같은 여행/서울, 맛집 밖의 방송 맛집은 통과하지 않는다
+        self.assertFalse(naver_blog.in_categories("21", self.TREE, {"11"}))
+        self.assertFalse(naver_blog.in_categories("60", self.TREE, {"11"}))
+        self.assertFalse(naver_blog.in_categories(None, self.TREE, {"11"}))
+
+    def test_post_category_no_from_page(self):
+        self.assertEqual(naver_blog.post_category_no('<a data-categoryNo="18">'), "18")
+        self.assertEqual(naver_blog.post_category_no('{"categoryNo\\":18,'), "18")
+        self.assertIsNone(naver_blog.post_category_no("<html></html>"))
+
+
 class CardsTest(unittest.TestCase):
     def test_validate_cleans_text_and_drops_empty_slides(self):
         content = cards.validate(

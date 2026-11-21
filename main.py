@@ -30,13 +30,13 @@ MIN_TEXT_LENGTH = 300
 # 사진 카드는 사진이 최소 1장은 있어야 만든다 (적으면 장 수를 줄여서 만든다).
 MIN_PHOTOS = 1
 
-# 방문 후기만 올린다: 정보 글 카테고리는 건너뛴다 (Variable SKIP_CATEGORIES, 쉼표로).
-DEFAULT_SKIP_CATEGORIES = "먹거리 정보,방송 맛집,제철·레시피"
+# 방문 후기만 올린다: 이 카테고리(번호)와 그 아래 글만. 기본은 "맛집 · 그만 먹어.."(11).
+# 블로그 카테고리 번호는 m.blog.naver.com/api/blogs/<ID>/category-list 에서 확인 (Variable POST_CATEGORIES, 쉼표로).
+DEFAULT_POST_CATEGORIES = "11"
 
 
-def skip_categories():
-    value = os.environ.get("SKIP_CATEGORIES")
-    value = DEFAULT_SKIP_CATEGORIES if value is None or not value.strip() else value
+def post_categories():
+    value = (os.environ.get("POST_CATEGORIES") or DEFAULT_POST_CATEGORIES).strip()
     return {name.strip() for name in value.split(",") if name.strip()}
 
 
@@ -126,12 +126,25 @@ def find_post(args, history, channels):
 
         return blog_name, post or {"title": "", "link": link, "published": None, "category": "", "summary": ""}
 
-    blog_name, posts = naver_blog.fetch_posts(naver_blog.blog_id())
+    owner = naver_blog.blog_id()
+    blog_name, posts = naver_blog.fetch_posts(owner)
     max_age = int(os.environ.get("MAX_AGE_DAYS") or 3)
-    skipped = skip_categories()
-    posts = [post for post in posts if post["category"] not in skipped]
+    allowed = post_categories()
+    tree = None
 
-    return blog_name, naver_blog.pick_post(posts, done_links(history, channels), max_age_days=max_age)
+    def accept(post):
+        # RSS의 카테고리 이름만으로는 맛집/서울과 여행/서울을 구분할 수 없어서 글 페이지의 카테고리 번호를 본다.
+        nonlocal tree
+        tree = tree if tree is not None else naver_blog.category_tree(owner)
+        number = naver_blog.fetch_post_category_no(post["link"])
+        ok = naver_blog.in_categories(number, tree, allowed)
+
+        if not ok:
+            print(f"방문 후기 카테고리가 아니라 건너뜀: [{tree.get(number, ('?', ''))[0]}] {post['title']}")
+
+        return ok
+
+    return blog_name, naver_blog.pick_post(posts, done_links(history, channels), max_age_days=max_age, accept=accept)
 
 
 def check_account():

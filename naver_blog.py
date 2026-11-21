@@ -180,8 +180,8 @@ def fetch_post_content(link):
     return post_content(download_page(f"https://m.blog.naver.com/{owner}/{log_no}"))
 
 
-def pick_post(posts, done_links, now=None, max_age_days=3):
-    """아직 안 올린 글 중 가장 오래된 것 1개 (너무 오래된 글은 제외, 처음 연결할 때 옛 글이 쏟아지지 않게)."""
+def candidate_posts(posts, done_links, now=None, max_age_days=3):
+    """아직 안 올린 글을 오래된 것부터 (너무 오래된 글은 제외, 처음 연결할 때 옛 글이 쏟아지지 않게)."""
     now = now or datetime.now(KST)
     candidates = [
         post
@@ -191,4 +191,59 @@ def pick_post(posts, done_links, now=None, max_age_days=3):
         and now - post["published"] <= timedelta(days=max_age_days)
     ]
 
-    return min(candidates, key=lambda post: post["published"]) if candidates else None
+    return sorted(candidates, key=lambda post: post["published"])
+
+
+def pick_post(posts, done_links, now=None, max_age_days=3, accept=None):
+    """candidate_posts 중 accept(post)를 통과하는 첫 글 1개."""
+    for post in candidate_posts(posts, done_links, now=now, max_age_days=max_age_days):
+        if accept is None or accept(post):
+            return post
+
+    return None
+
+
+def category_tree(owner):
+    """카테고리 번호 → (이름, 부모 번호). 같은 이름(예: 맛집/서울, 여행/서울)을 번호로 구분하려고 쓴다."""
+    import json
+    import urllib.request
+
+    from common import BROWSER_HEADERS
+
+    # Referer가 없으면 403
+    request = urllib.request.Request(
+        f"https://m.blog.naver.com/api/blogs/{owner}/category-list",
+        headers={**BROWSER_HEADERS, "Accept": "application/json", "Referer": f"https://m.blog.naver.com/{owner}"},
+    )
+
+    with urllib.request.urlopen(request, timeout=30) as response:
+        items = json.loads(response.read().decode("utf-8"))["result"]["mylogCategoryList"]
+
+    return {
+        str(item["categoryNo"]): (item.get("categoryName") or "", str(item.get("parentCategoryNo") or ""))
+        for item in items
+    }
+
+
+def post_category_no(html):
+    match = re.search(r'categoryNo\W{1,4}(\d+)', html)
+    return match.group(1) if match else None
+
+
+def fetch_post_category_no(link):
+    owner, log_no = parse_post_link(link)
+    return post_category_no(download_page(f"https://m.blog.naver.com/{owner}/{log_no}"))
+
+
+def in_categories(category_no, tree, allowed):
+    """category_no가 allowed(번호 집합) 자신이거나 그 아래 카테고리인지."""
+    seen = set()
+
+    while category_no and category_no not in seen:
+        if category_no in allowed:
+            return True
+
+        seen.add(category_no)
+        category_no = tree.get(category_no, ("", ""))[1]
+
+    return False
