@@ -3,6 +3,7 @@ import { Cards, calculateCardsMetadata } from "./cards/Cards";
 import { cardsSchema } from "./cards/schema";
 import { FoodCards, calculateFoodCardsMetadata } from "./food/FoodCards";
 import { foodCardsSchema } from "./food/schema";
+import { FoodReel, calculateFoodReelMetadata, foodReelSchema } from "./food/FoodReel";
 
 // 실제 렌더링은 cards.py가 --props로 내용을 넘겨준다. defaultProps는 Studio 미리보기용 샘플.
 export const RemotionRoot: React.FC = () => {
@@ -68,6 +69,26 @@ export const RemotionRoot: React.FC = () => {
           slides: [
             { type: "cover", photo: "photos/sample/01.jpg", label: "오픈런 첫 족발", title: "명동 족발\n미쓰족발", body: "", items: [] },
           ],
+        }}
+      />
+      {/* 얌얌고니 릴스 (1080x1920). 영상은 reels.py가 public/videos/에 받아 둔다. */}
+      <Composition
+        id="FoodReel"
+        component={FoodReel}
+        schema={foodReelSchema}
+        calculateMetadata={calculateFoodReelMetadata}
+        durationInFrames={300}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={{
+          video: "videos/224485765186/01.mp4",
+          duration: 37.6,
+          width: 720,
+          height: 720,
+          title: "오픈런 첫 족발\n명동 미쓰족발",
+          footer: "전체 후기는 프로필 링크 블로그에",
+          handle: "@yamyam_gony",
         }}
       />
     </>

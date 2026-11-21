@@ -7,3 +7,4 @@ node_modules/
 video/out/
 .claude/settings.local.json
 video/public/photos/
+video/public/videos/
