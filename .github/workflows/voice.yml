@@ -1,0 +1,51 @@
+name: Reel Voice
+
+# 릴스 내레이션 시험: 대사를 넣으면 Gemini TTS(기본 속삭이는 말투)로 대사마다 wav를 만들어 아티팩트로 남긴다.
+# 게시하지 않는다.
+
+on:
+  workflow_dispatch:
+    inputs:
+      lines:
+        description: "대사들 (| 로 구분)"
+        required: true
+      voice:
+        description: "Gemini 목소리"
+        required: false
+        default: "Leda"
+      plain:
+        description: "속삭임 없이 보통 말투"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  voice:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Make narration
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          INPUT_LINES: ${{ github.event.inputs.lines }}
+          INPUT_VOICE: ${{ github.event.inputs.voice }}
+          INPUT_PLAIN: ${{ github.event.inputs.plain }}
+        run: |
+          python -c "import os; open('lines.txt','w',encoding='utf-8').write('\n'.join(l.strip() for l in os.environ['INPUT_LINES'].split('|') if l.strip()))"
+          args=(--lines lines.txt --out runtime/voice --voice "${INPUT_VOICE:-Leda}")
+          if [ "$INPUT_PLAIN" = "true" ]; then args+=(--plain); fi
+          python tts.py "${args[@]}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: voice
+          path: runtime/voice/
+          retention-days: 7
