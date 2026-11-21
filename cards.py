@@ -152,7 +152,7 @@ def build_props(content, post, blog_name, handle):
     }
 
 
-def render(props, work_dir, image_format="jpeg"):
+def render(props, work_dir, image_format="jpeg", composition="Cards"):
     """Remotion Cards 컴포지션을 장별 이미지로 렌더링한다. 돌려주는 값: 이미지 경로 목록(순서대로).
 
     인스타그램 API는 JPEG만 받으므로 기본은 jpeg.
@@ -169,7 +169,7 @@ def render(props, work_dir, image_format="jpeg"):
     shutil.rmtree(frames_dir, ignore_errors=True)
 
     command = [
-        npx, "remotion", "render", "src/index.ts", "Cards", frames_dir,
+        npx, "remotion", "render", "src/index.ts", composition, frames_dir,
         "--sequence", f"--image-format={image_format}", f"--props={props_path}", "--log=error",
         # 처음 실행할 때 한글 글꼴을 받느라 오래 걸릴 수 있다.
         "--timeout=120000",

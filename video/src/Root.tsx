@@ -1,6 +1,8 @@
 import { Composition } from "remotion";
 import { Cards, calculateCardsMetadata } from "./cards/Cards";
 import { cardsSchema } from "./cards/schema";
+import { FoodCards, calculateFoodCardsMetadata } from "./food/FoodCards";
+import { foodCardsSchema } from "./food/schema";
 
 // 실제 렌더링은 cards.py가 --props로 내용을 넘겨준다. defaultProps는 Studio 미리보기용 샘플.
 export const RemotionRoot: React.FC = () => {
@@ -47,6 +49,24 @@ export const RemotionRoot: React.FC = () => {
               title: "여러분의 제주\n최애 장소는\n어디인가요?",
               body: "전체 글은 블로그에서",
             },
+          ],
+        }}
+      />
+      {/* 얌얌고니 맛집 사진 카드 (1080x1350). 사진은 food_cards.py가 public/photos/에 받아 둔다. */}
+      <Composition
+        id="FoodCards"
+        component={FoodCards}
+        schema={foodCardsSchema}
+        calculateMetadata={calculateFoodCardsMetadata}
+        durationInFrames={1}
+        fps={1}
+        width={1080}
+        height={1350}
+        defaultProps={{
+          footer: "돌아다니면서 얼마나 먹는 고니?",
+          handle: "@yamyam_gony",
+          slides: [
+            { type: "cover", photo: "photos/sample/01.jpg", label: "오픈런 첫 족발", title: "명동 족발\n미쓰족발", body: "", items: [] },
           ],
         }}
       />
