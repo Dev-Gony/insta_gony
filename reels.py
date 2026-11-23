@@ -482,6 +482,49 @@ def timeline(content, voices, video, footer, handle):
     }
 
 
+def smooth_slow_cuts(props, video):
+    """느리게 재생할 컷은 ffmpeg 움직임 보간(minterpolate)으로 미리 30fps 영상을 만들어 1배속으로 쓴다.
+
+    Remotion에서 playbackRate로 늦추면 원본 프레임이 반복돼서(0.7배면 3프레임마다 한 번 멈춤) 화면이 덜컥거린다.
+    (양재옥 릴스 11/22: 거의 모든 컷이 0.7배라 처음부터 끝까지 끊겨 보였음)
+    """
+    folder = os.path.join(video["dir"], "cuts")
+    shutil.rmtree(folder, ignore_errors=True)
+    os.makedirs(folder, exist_ok=True)
+
+    for index, cut in enumerate(props["cuts"]):
+        rate = (cut["end"] - cut["start"]) / cut["duration"]
+
+        if rate >= 0.97:
+            continue
+
+        name = f"{index:02d}.mp4"
+        run_ffmpeg([
+            "-ss", f"{cut['start']:.3f}", "-to", f"{cut['end']:.3f}", "-i", video["cfr"],
+            "-vf", f"setpts=PTS/{rate:.4f},minterpolate=fps=30:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1",
+            "-an", "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p", "-g", "30",
+            os.path.join(folder, name),
+        ])
+        cut["src"] = f"{video['public']}/cuts/{name}"
+        cut["start"], cut["end"] = 0.0, cut["duration"]
+
+    return props
+
+
+def repeated_frame_ratio(path, crop=None):
+    """앞 프레임과 거의 같은 프레임의 비율 (덜컥거림 검사)."""
+    import re
+
+    scale = f"crop={crop}," if crop else ""
+    result = subprocess.run(
+        [ffmpeg_exe(), "-hide_banner", "-i", path, "-an", "-vf",
+         f"{scale}scale=120:120,format=gray,signalstats,metadata=print:key=lavfi.signalstats.YDIF", "-f", "null", "-"],
+        capture_output=True, text=True, encoding="utf-8", errors="ignore",
+    )
+    values = [float(x) for x in re.findall(r"YDIF=([0-9.]+)", result.stderr)][1:]
+    return sum(1 for value in values if value < 0.3) / max(1, len(values))
+
+
 def render(props, work_dir):
     """FoodReelEdit → reel.mp4 (소리 크기 -14 LUFS). 돌려주는 값: 경로."""
     npx = shutil.which("npx")
@@ -520,7 +563,15 @@ def make_reel(post, text, video, work_dir, footer, handle):
     print(f"릴스 대사 {len(content['lines'])}줄")
 
     voices = narrate(content, os.path.join(video["dir"], "voice"))
-    props = timeline(content, voices, video, footer, handle)
+    props = smooth_slow_cuts(timeline(content, voices, video, footer, handle), video)
+
+    # 보간으로 만든 컷이 덜컥거리지 않는지 (반복 프레임 10% 넘으면 실패)
+    for cut in props["cuts"]:
+        if cut.get("src"):
+            ratio = repeated_frame_ratio(os.path.join(VIDEO_PROJECT_DIR, "public", cut["src"]))
+            if ratio > 0.10:
+                raise RuntimeError(f"느린 컷이 덜컥거립니다: {cut['src']} 반복 프레임 {ratio:.0%}")
+
     path = render(props, work_dir)
     print(f"릴스 렌더링 완료: {path} ({props['lines'][-1]['from'] + props['lines'][-1]['duration']:.1f}초)")
     return path, content
