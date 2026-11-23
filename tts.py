@@ -54,6 +54,8 @@ def synthesize(text, path, voice=VOICE, style=WHISPER_STYLE, attempts=4):
         f"?key={urllib.parse.quote(_key())}"
     )
 
+    inline = None
+
     for attempt in range(attempts):
         request = urllib.request.Request(
             url, data=json.dumps(body).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST"
@@ -62,15 +64,28 @@ def synthesize(text, path, voice=VOICE, style=WHISPER_STYLE, attempts=4):
         try:
             with urllib.request.urlopen(request, timeout=300) as response:
                 data = json.loads(response.read().decode("utf-8"))
-            break
         except urllib.error.HTTPError as error:
             # 429(한도)·503(혼잡)은 기다렸다 다시. 다른 오류는 바로 실패.
             if error.code not in (429, 500, 503) or attempt == attempts - 1:
                 raise RuntimeError(f"Gemini TTS 실패 {error.code}: {error.read().decode('utf-8', 'ignore')[:300]}") from None
 
             time.sleep(30 * (attempt + 1))
+            continue
 
-    inline = data["candidates"][0]["content"]["parts"][0]["inlineData"]
+        # 가끔 소리 없이 빈 응답(content 없음)이 온다 → 다시
+        candidate = (data.get("candidates") or [{}])[0]
+        parts = (candidate.get("content") or {}).get("parts") or []
+        inline = next((part["inlineData"] for part in parts if part.get("inlineData")), None)
+
+        if inline:
+            break
+
+        print(f"Gemini TTS 빈 응답(finishReason={candidate.get('finishReason')}), 다시 시도")
+        time.sleep(5 * (attempt + 1))
+
+    if not inline:
+        raise RuntimeError("Gemini TTS가 계속 빈 응답을 줍니다.")
+
     rate = int((re.search(r"rate=(\d+)", inline["mimeType"]) or [None, 24000])[1])
     pcm = base64.b64decode(inline["data"])
 
