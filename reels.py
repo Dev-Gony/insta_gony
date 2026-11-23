@@ -20,6 +20,7 @@ import os
 import shutil
 import subprocess
 import urllib.request
+import time
 import wave
 
 import naver_blog
@@ -405,25 +406,43 @@ def narrate(content, voice_dir):
         print(f"{error} → 줄마다 따로 만듭니다.")
         pieces = None
 
-    results = []
     trim = (
         "silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.05,areverse,"
         f"silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.08,areverse,atempo={VOICE_TEMPO}"
     )
 
-    for index, line in enumerate(lines, start=1):
-        path = os.path.join(voice_dir, f"{index:02d}.wav")
+    def per_line():
+        out = []
 
-        if pieces:
-            start, end = pieces[index - 1]
-            run_ffmpeg(["-i", whole, "-ss", f"{start:.3f}", "-to", f"{end:.3f}", "-af", trim, path])
-        else:
+        for index, line in enumerate(lines, start=1):
             raw = os.path.join(voice_dir, f"raw_{index:02d}.wav")
+            path = os.path.join(voice_dir, f"{index:02d}.wav")
             tts.synthesize(line["speech"], raw)
             run_ffmpeg(["-i", raw, "-af", trim, path])
             os.remove(raw)
+            out.append((path, wav_seconds(path)))
+            time.sleep(6)  # 무료 한도(분당 요청 수)
 
+        return out
+
+    if not pieces:
+        return per_line()
+
+    results = []
+
+    for index, (start, end) in enumerate(pieces, start=1):
+        path = os.path.join(voice_dir, f"{index:02d}.wav")
+        run_ffmpeg(["-i", whole, "-ss", f"{start:.3f}", "-to", f"{end:.3f}", "-af", trim, path])
         results.append((path, wav_seconds(path)))
+
+    # 빈 소리를 잘라낸 실제 목소리 길이로 다시 검사: 줄마다 음절 수로 예상한 길이의 0.55~1.7배,
+    # 0.6초 미만이면 잘못 나눈 것(마지막 줄이 통째로 빠지는 일이 있었음) → 줄마다 따로
+    spoken = sum(seconds for _, seconds in results)
+    for (path, seconds), weight in zip(results, weights):
+        expected = spoken * weight / sum(weights)
+        if seconds < 0.6 or not 0.55 <= seconds / expected <= 1.7:
+            print(f"나눈 음성 길이가 대사와 맞지 않음({seconds:.2f}초, 예상 {expected:.2f}초) → 줄마다 따로 만듭니다.")
+            return per_line()
 
     return results
 
