@@ -132,6 +132,7 @@ def parse_args():
     parser.add_argument("--check", action="store_true", help="올릴 새 글이 있는지만 확인 (GitHub Actions 출력 has_post)")
     parser.add_argument("--check-account", action="store_true", help="인스타 토큰이 작동하는지만 확인 (읽기만, 게시 안 함)")
     parser.add_argument("--reel-file", help="릴스를 새로 만들지 않고 이 mp4(경로나 URL)를 올리기")
+    parser.add_argument("--remake-reel", action="store_true", help="이미 릴스를 올린 글이어도 릴스를 다시 만들기 (업로드를 켜면 다시 올림)")
 
     return parser.parse_args()
 
@@ -201,7 +202,7 @@ def check_account():
 
 def prepare_video(args, post, text, work, work_dir, channels, history, footer, handle):
     """글의 영상: 짧으면 캐러셀에 넣을 세로 영상, 길면 릴스. 영상 쪽이 실패해도 카드 게시는 막지 않는다."""
-    need_reel = "reels" in channels and not channel_done(history, post["link"], "reels")
+    need_reel = "reels" in channels and (args.remake_reel or not channel_done(history, post["link"], "reels"))
     need_carousel = "instagram" in channels and not channel_done(history, post["link"], "instagram")
 
     if args.reel_file:
@@ -348,7 +349,7 @@ def main():
     failed = []
 
     for channel in channels:
-        if channel_done(history, post["link"], channel):
+        if channel_done(history, post["link"], channel) and not (channel == "reels" and args.remake_reel):
             continue
 
         try:

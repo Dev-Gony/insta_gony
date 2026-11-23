@@ -20,7 +20,8 @@ export const foodReelEditSchema = z.object({
   width: z.number(),
   height: z.number(),
   // 영상 컷: 원본 [start, end]를 출력 [from, from+duration]에 (느리면 playbackRate < 1)
-  cuts: z.array(z.object({ start: seconds, end: seconds, from: seconds, duration: seconds })),
+  // src가 있으면 그 파일(느린 재생을 움직임 보간으로 미리 만든 컷)을 1배속으로
+  cuts: z.array(z.object({ start: seconds, end: seconds, from: seconds, duration: seconds, src: z.string().optional() })),
   // 대사: 출력 from부터 duration 동안 자막, voice가 있으면 그 음성
   lines: z.array(z.object({ from: seconds, duration: seconds, text: z.string(), voice: z.string() })),
   // 첫 대사 동안 위쪽에 크게
@@ -210,7 +211,14 @@ export const FoodReelEdit: React.FC<FoodReelEditProps> = (props) => {
 
       {props.cuts.map((cut, index) => (
         <Sequence key={`cut-${index}`} from={frames(cut.from)} durationInFrames={frames(cut.duration)}>
-          <Cut src={src} start={cut.start} end={cut.end} duration={cut.duration} index={index} box={box} />
+          <Cut
+            src={cut.src ? staticFile(cut.src) : src}
+            start={cut.start}
+            end={cut.end}
+            duration={cut.duration}
+            index={index}
+            box={box}
+          />
         </Sequence>
       ))}
 

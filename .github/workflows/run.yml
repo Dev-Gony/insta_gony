@@ -16,6 +16,10 @@ on:
       reel_url:
         description: "릴스를 새로 만들지 않고 이 mp4 주소를 올리기 (비우면 글의 영상으로 만듦)"
         required: false
+      remake_reel:
+        description: "이미 릴스를 올린 글이어도 릴스를 다시 만들기 (upload를 켜면 다시 올림)"
+        type: boolean
+        default: false
       check_account:
         description: "인스타 토큰 확인만 하기 (계정 정보만 읽고 끝, 게시 안 함)"
         type: boolean
@@ -51,6 +55,7 @@ jobs:
       INSTAGRAM_GRAPH_HOST: ${{ vars.INSTAGRAM_GRAPH_HOST }}
       INPUT_LINK: ${{ github.event.inputs.link }}
       INPUT_REEL_URL: ${{ github.event.inputs.reel_url }}
+      INPUT_REMAKE_REEL: ${{ github.event.inputs.remake_reel }}
       REEL_FOOTER: ${{ vars.REEL_FOOTER }}
       MIN_REEL_SECONDS: ${{ vars.MIN_REEL_SECONDS }}
 
@@ -129,6 +134,10 @@ jobs:
 
           if [ -n "$INPUT_REEL_URL" ]; then
             args+=(--reel-file "$INPUT_REEL_URL")
+          fi
+
+          if [ "$INPUT_REMAKE_REEL" = "true" ]; then
+            args+=(--remake-reel)
           fi
 
           if [ "$INPUT_UPLOAD" != "true" ]; then
