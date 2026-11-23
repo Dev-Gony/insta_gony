@@ -98,7 +98,7 @@ const Cut: React.FC<{
   const length = frames(duration);
   const zoomIn = index % 2 === 0;
   const scale = interpolate(frame, [0, length], zoomIn ? [1.0, 1.06] : [1.06, 1.0], { extrapolateRight: "clamp" });
-  const rate = Math.max(0.7, Math.min(1, (end - start) / duration));
+  const rate = Math.max(0.5, Math.min(1, (end - start) / duration));
 
   return (
     <>

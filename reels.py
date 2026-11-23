@@ -38,7 +38,9 @@ MAX_CAROUSEL_VIDEO_SECONDS = 60
 VOICE_GAP = 0.12        # 대사 사이 쉼
 VOICE_TEMPO = 1.12      # 속삭임이 늘어지지 않게
 LAST_HOLD = 0.9         # 마지막 질문을 읽을 시간
-MIN_RATE = 0.7          # 원본이 짧을 때 느리게 재생하는 한계
+MIN_RATE = 0.5          # 원본이 짧을 때 느리게 재생하는 한계 (멈춘 음식 장면이라 0.5배도 어색하지 않다)
+# 속삭이는 목소리(1.12배 뒤)는 1초에 5.5음절쯤
+SYLLABLES_PER_SECOND = 5.5
 
 
 # ---------------------------------------------------------------------------
@@ -196,13 +198,14 @@ SYSTEM_PROMPT = """너는 맛집 기록 인스타그램 계정 '얌얌고니'의
   확실하지 않으면 그 줄을 빼거나, 대사를 화면에 보이는 것에 맞게 바꾼다.
 - 시트의 시각(초)은 그 칸이 시작하는 시각이다. 구간 시각은 원본 영상 길이 안에서.
 
-구성 (대사 6~8줄, 말로 합쳐 20~26초. 속삭이는 목소리는 1초에 6음절 정도):
+구성 (대사 수와 길이는 영상 길이에 맞춘다 — 아래 사용자 메시지의 '말 길이 목표'를 넘기지 않는다. 속삭이는 목소리는 1초에 5.5음절):
 1. 첫 줄 = 훅. 가장 먹음직스럽고 움직임이 있는 장면(젓가락으로 들기 등) + 이 집을 한마디로 (12음절 이내).
 2. 가게 이름·위치·시간 → 대표 메뉴·가격 → 음식 모습 → 곁들이·무료 → 맛 표현 순서로 이야기가 되게.
 3. 마지막 줄 = 댓글을 부르는 질문 하나 (예: "여러분은 쌈파예요, 소스파예요?"). 구독·좋아요 부탁 금지.
 - text: 화면 자막. 대사와 같은 문장, 강조할 단어 하나를 **이렇게**. 숫자는 숫자로(58,000원).
 - speech: 읽을 문장. 숫자는 한글로(오만 팔천 원), 기호 없이.
-- ranges: 그 줄 동안 보여줄 원본 구간 1~2개 [시작초, 끝초]. 한 줄의 구간 합은 대략 그 줄을 읽는 시간(음절 수 ÷ 6초).
+- ranges: 그 줄 동안 보여줄 원본 구간 1~2개 [시작초, 끝초]. 한 줄의 구간 합은 그 줄을 읽는 시간(speech 음절 수 ÷ 5.5초)의 0.6배 이상.
+  구간 안에 다른 장면(다음 메뉴, 다른 접시)이 섞이지 않게 장면이 바뀌는 시각 앞에서 끊는다.
   다른 줄과 구간이 겹치지 않게. 첫 줄 구간은 움직임이 있는 곳.
 - seen: 고른 구간에 실제로 보이는 것 한 줄 (확인용).
 hook: 첫 줄 동안 위에 크게 뜰 2줄 제목 (줄당 7자 이내, 줄바꿈으로 나눔, 강조 단어 **).
@@ -235,12 +238,30 @@ SCHEMA = {
 }
 
 
+def target_seconds(duration):
+    """영상이 짧으면 말도 짧게: 원본 길이의 1.4배(0.7배 느린 재생까지)와 26초 중 작은 쪽, 최소 10초."""
+    return max(10.0, min(26.0, duration * 1.4))
+
+
+def target_lines(duration):
+    seconds = target_seconds(duration)
+    return "4~5" if seconds < 16 else "5~6" if seconds < 21 else "6~8"
+
+
+def syllables(text):
+    import re
+
+    return max(1, len(re.findall(r"[가-힣0-9A-Za-z]", text)))
+
+
 def plan(post, text, sheets, step, duration):
     prompt = "\n".join(
         [
             "아래 블로그 후기와 영상 장면 시트로 릴스를 짜줘.",
             "",
             f"영상 길이: {duration:.1f}초. 장면 시트는 {step}초마다 한 칸이고 칸 위에 시작 시각이 적혀 있다.",
+            f"말 길이 목표: 대사 전체를 읽는 시간 {target_seconds(duration):.0f}초 이하 "
+            f"(= 전체 음절 {int(target_seconds(duration) * SYLLABLES_PER_SECOND)}개 이하), 대사 {target_lines(duration)}줄.",
             "장면 시트 (Read로 열어 볼 것):",
             *[f"- {os.path.abspath(path)}" for path in sheets],
             "",
@@ -303,18 +324,56 @@ def _silences(path, noise="-38dB", minimum=0.3):
     return list(zip(starts, ends))
 
 
-def _split_points(path, count):
-    """한 번에 읽은 음성을 count줄로 나눌 자리(초): 가장 긴 쉼 count-1개의 가운데."""
+def _split_points(path, weights):
+    """한 번에 읽은 음성을 줄마다 나눌 자리(초).
+
+    줄마다 음절 수로 '여기쯤 끝나야 한다'는 위치를 계산하고, 그 위치에 가장 가까운 쉼(앞에서부터 차례로)을 고른다.
+    문장 안의 짧은 쉼을 줄 경계로 잘못 잡지 않게, 길이가 비슷한 쉼 중에서도 예상 위치에 가까운 것을 쓴다.
+    """
     total = wav_seconds(path)
+    count = len(weights)
+    expected, acc = [], 0.0
+
+    for weight in weights[:-1]:
+        acc += weight
+        expected.append(total * acc / sum(weights))
 
     for noise in ("-38dB", "-34dB", "-42dB", "-30dB"):
-        gaps = [(start, end) for start, end in _silences(path, noise) if 0.2 < start and end < total - 0.2]
+        gaps = [((start + end) / 2, end - start) for start, end in _silences(path, noise, 0.25) if 0.2 < start and end < total - 0.2]
 
-        if len(gaps) >= count - 1:
-            longest = sorted(gaps, key=lambda gap: gap[1] - gap[0], reverse=True)[: count - 1]
-            return sorted((start + end) / 2 for start, end in longest)
+        if len(gaps) < count - 1:
+            continue
+
+        points, last = [], 0.0
+
+        for index, target in enumerate(expected):
+            remaining = count - 1 - index
+            options = [gap for gap in gaps if gap[0] > last + 0.4]
+
+            if len(options) < remaining:
+                break
+
+            # 남은 줄 수만큼 쉼을 남겨 두고, 예상 위치에 가깝고 긴 쉼일수록 좋게
+            usable = options[: len(options) - remaining + 1]
+            best = min(usable, key=lambda gap: abs(gap[0] - target) - 0.6 * gap[1])
+            points.append(best[0])
+            last = best[0]
+        else:
+            return points
 
     raise RuntimeError(f"내레이션을 {count}줄로 나눌 쉼을 찾지 못했습니다.")
+
+
+def _pieces_ok(pieces, weights, total):
+    """나눈 조각 길이가 음절 수로 예상한 길이와 너무 다르면 잘못 나눈 것."""
+    for (start, end), weight in zip(pieces, weights):
+        expected = total * weight / sum(weights)
+        ratio = (min(end, total) - start) / expected
+
+        if not 0.5 <= ratio <= 1.8:
+            return False
+
+    return True
 
 
 def narrate(content, voice_dir):
@@ -333,9 +392,15 @@ def narrate(content, voice_dir):
     )
     tts.synthesize(script, whole, style=style)
 
+    weights = [syllables(line["speech"]) for line in lines]
+    total = wav_seconds(whole)
+
     try:
-        cuts = _split_points(whole, len(lines))
-        pieces = list(zip([0.0] + cuts, cuts + [wav_seconds(whole) + 1]))
+        cuts = _split_points(whole, weights)
+        pieces = list(zip([0.0] + cuts, cuts + [total + 1]))
+
+        if not _pieces_ok(pieces, weights, total):
+            raise RuntimeError("나눈 길이가 대사 길이와 맞지 않습니다")
     except RuntimeError as error:
         print(f"{error} → 줄마다 따로 만듭니다.")
         pieces = None
@@ -385,7 +450,7 @@ def timeline(content, voices, video, footer, handle):
         ranges = [list(pair) for pair in line["ranges"]]
         total = sum(end - start for start, end in ranges)
 
-        # 원본이 너무 짧으면(0.7배로도 모자라면) 구간을 뒤로(안 되면 앞으로) 늘린다
+        # 원본이 너무 짧으면 먼저 느리게(최대 0.5배), 그래도 모자랄 때만 구간을 뒤로(안 되면 앞으로) 늘린다
         need = length * MIN_RATE
         if total < need:
             start, end = ranges[-1]
